@@ -1,17 +1,21 @@
 """
 backend/main.py
 
-Backend inicial do ChargeGrid Intelligence.
+Backend do ChargeGrid Intelligence.
 
-Responsabilidades desta etapa:
-- Servir as páginas do frontend (tela inicial, login, cadastro).
-- Expor uma API para cadastro e login de usuários.
-- Persistir usuário + veículo em banco de dados (SQLite por enquanto;
-  a estrutura das tabelas já é compatível com o schema base em
-  database/schema.sql, que será usado quando migrarmos para PostgreSQL).
+Fluxo de onboarding em duas etapas:
+1. /cadastro       -> cria a conta (nome, email, senha) e já loga o usuário.
+2. /cadastro-veiculo -> usuário logado cadastra o veículo (etapa separada).
+Depois disso, o usuário cai no /painel, com as 4 áreas do sistema.
+
+Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
+A estrutura das tabelas já é compatível com database/schema.sql, que
+será usado quando migrarmos para PostgreSQL.
 """
 
 import os
+from functools import wraps
+
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -69,6 +73,26 @@ class Veiculo(db.Model):
 
 
 # ---------------------------------------------------------------------------
+# HELPER DE AUTENTICAÇÃO
+# ---------------------------------------------------------------------------
+
+def login_required(view_func):
+    """Bloqueia o acesso a rotas que exigem usuário logado."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if "usuario_id" not in session:
+            return redirect(url_for("pagina_login"))
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def usuario_atual():
+    return Usuario.query.get(session.get("usuario_id"))
+
+
+# ---------------------------------------------------------------------------
 # ROTAS DE PÁGINA
 # ---------------------------------------------------------------------------
 
@@ -87,20 +111,20 @@ def pagina_cadastro():
     return render_template("cadastro.html")
 
 
-@app.route("/dashboard")
-def dashboard():
-    if "usuario_id" not in session:
-        return redirect(url_for("pagina_login"))
-    usuario = Usuario.query.get(session["usuario_id"])
-    return (
-        f"<h1 style='color:#f1f5f9;background:#0b1120;padding:40px;font-family:sans-serif'>"
-        f"Bem-vindo, {usuario.nome}! O dashboard ainda será construído nas próximas etapas."
-        f"</h1>"
-    )
+@app.route("/cadastro-veiculo")
+@login_required
+def pagina_cadastro_veiculo():
+    return render_template("cadastro_veiculo.html")
+
+
+@app.route("/painel")
+@login_required
+def painel():
+    return render_template("painel.html", usuario=usuario_atual())
 
 
 # ---------------------------------------------------------------------------
-# API - CADASTRO
+# API - CADASTRO DE CONTA (ETAPA 1)
 # ---------------------------------------------------------------------------
 
 @app.route("/api/cadastro", methods=["POST"])
@@ -111,12 +135,6 @@ def api_cadastro():
     email = (dados.get("email") or "").strip().lower()
     senha = dados.get("senha") or ""
 
-    placa = (dados.get("placa") or "").strip()
-    marca = (dados.get("marca") or "").strip()
-    modelo = (dados.get("modelo") or "").strip()
-    capacidade = dados.get("capacidade_bateria_kwh")
-    percentual_atual = dados.get("percentual_atual")
-
     if not nome or not email or not senha:
         return jsonify({"erro": "Nome, email e senha são obrigatórios."}), 400
 
@@ -126,24 +144,51 @@ def api_cadastro():
     novo_usuario = Usuario(nome=nome, email=email)
     novo_usuario.set_senha(senha)
     db.session.add(novo_usuario)
-    db.session.flush()  # garante que novo_usuario.id já existe antes de criar o veículo
-
-    novo_veiculo = Veiculo(
-        usuario_id=novo_usuario.id,
-        placa=placa or None,
-        marca=marca or None,
-        modelo=modelo or None,
-        capacidade_bateria_kwh=float(capacidade) if capacidade else None,
-        percentual_atual=float(percentual_atual) if percentual_atual else 0,
-    )
-    db.session.add(novo_veiculo)
     db.session.commit()
 
-    return jsonify({"mensagem": "Conta criada com sucesso."}), 201
+    # Já loga o usuário para seguir direto para a etapa 2 (cadastro do veículo).
+    session["usuario_id"] = novo_usuario.id
+
+    return jsonify({
+        "mensagem": "Conta criada com sucesso.",
+        "redirect": url_for("pagina_cadastro_veiculo"),
+    }), 201
 
 
 # ---------------------------------------------------------------------------
-# API - LOGIN
+# API - CADASTRO DE VEÍCULO (ETAPA 2)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/veiculo", methods=["POST"])
+@login_required
+def api_veiculo():
+    dados = request.get_json(silent=True) or {}
+    usuario = usuario_atual()
+
+    placa = (dados.get("placa") or "").strip()
+    marca = (dados.get("marca") or "").strip()
+    modelo = (dados.get("modelo") or "").strip()
+    capacidade = dados.get("capacidade_bateria_kwh")
+    percentual_atual = dados.get("percentual_atual")
+
+    veiculo = usuario.veiculo or Veiculo(usuario_id=usuario.id)
+    veiculo.placa = placa or None
+    veiculo.marca = marca or None
+    veiculo.modelo = modelo or None
+    veiculo.capacidade_bateria_kwh = float(capacidade) if capacidade else None
+    veiculo.percentual_atual = float(percentual_atual) if percentual_atual else 0
+
+    db.session.add(veiculo)
+    db.session.commit()
+
+    return jsonify({
+        "mensagem": "Veículo cadastrado com sucesso.",
+        "redirect": url_for("painel"),
+    }), 201
+
+
+# ---------------------------------------------------------------------------
+# API - LOGIN / LOGOUT
 # ---------------------------------------------------------------------------
 
 @app.route("/api/login", methods=["POST"])
@@ -159,7 +204,7 @@ def api_login():
         return jsonify({"erro": "Email ou senha inválidos."}), 401
 
     session["usuario_id"] = usuario.id
-    return jsonify({"mensagem": "Login realizado com sucesso.", "redirect": url_for("dashboard")})
+    return jsonify({"mensagem": "Login realizado com sucesso.", "redirect": url_for("painel")})
 
 
 @app.route("/api/logout", methods=["POST"])

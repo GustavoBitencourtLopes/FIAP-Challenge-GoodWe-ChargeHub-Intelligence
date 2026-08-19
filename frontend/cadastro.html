@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Conta · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <span class="badge-step">ETAPA 1 DE 2 · CONTA</span>
+            <h2>Criar sua conta</h2>
+            <p class="subtitle">Comece com seus dados básicos. Você cadastra o veículo no próximo passo.</p>
+
+            <form id="form-cadastro">
+                <div class="form-group">
+                    <label for="nome">Nome completo</label>
+                    <input type="text" id="nome" name="nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="senha">Senha</label>
+                        <input type="password" id="senha" name="senha" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmar-senha">Confirmar senha</label>
+                        <input type="password" id="confirmar-senha" required minlength="6">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full">Continuar</button>
+                <div id="mensagem" class="msg"></div>
+            </form>
+
+            <p class="footer-link">Já tem conta? <a href="/login">Entrar</a></p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('form-cadastro');
+        const mensagem = document.getElementById('mensagem');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            mensagem.className = 'msg';
+
+            const senha = document.getElementById('senha').value;
+            const confirmarSenha = document.getElementById('confirmar-senha').value;
+
+            if (senha !== confirmarSenha) {
+                mensagem.textContent = 'As senhas não coincidem.';
+                mensagem.className = 'msg erro';
+                return;
+            }
+
+            const dados = {
+                nome: document.getElementById('nome').value,
+                email: document.getElementById('email').value,
+                senha: senha,
+            };
+
+            try {
+                const resposta = await fetch('/api/cadastro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados),
+                });
+                const resultado = await resposta.json();
+
+                if (!resposta.ok) {
+                    mensagem.textContent = resultado.erro || 'Não foi possível criar a conta.';
+                    mensagem.className = 'msg erro';
+                    return;
+                }
+
+                mensagem.textContent = resultado.mensagem + ' Redirecionando...';
+                mensagem.className = 'msg sucesso';
+                setTimeout(() => window.location.href = resultado.redirect || '/', 900);
+            } catch (err) {
+                mensagem.textContent = 'Erro de conexão com o servidor.';
+                mensagem.className = 'msg erro';
+            }
+        });
+    </script>
+
+</body>
+
+</html>

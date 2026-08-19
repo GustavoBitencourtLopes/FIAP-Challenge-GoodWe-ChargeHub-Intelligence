@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <nav class="navbar">
+        <div class="logo">⚡ ChargeGrid <span>Intelligence</span></div>
+        <div class="nav-links">
+            <a href="/painel">Painel</a>
+            <a href="/#como-funciona">Como funciona</a>
+        </div>
+        <div class="nav-actions">
+            <div class="profile-icon">👤</div>
+            <button id="btn-sair" class="btn btn-outline">Sair</button>
+        </div>
+    </nav>
+
+    <section class="painel-header">
+        <h1>Olá, {{ usuario.nome }}</h1>
+        <p>O que você quer fazer?</p>
+    </section>
+
+    <section class="painel-grid">
+        <a href="/cadastro-veiculo" class="painel-card">
+            <div class="card-number">01</div>
+            <h3>Meu veículo</h3>
+            <p>Cadastre ou edite as informações do seu veículo elétrico.</p>
+        </a>
+
+        <a href="#" class="painel-card disabled">
+            <span class="em-breve-tag">em breve</span>
+            <div class="card-number">02</div>
+            <h3>Nova sessão de carregamento</h3>
+            <p>Simule um carregamento e veja tempo, custo e disponibilidade estimados.</p>
+        </a>
+
+        <a href="#" class="painel-card disabled">
+            <span class="em-breve-tag">em breve</span>
+            <div class="card-number">03</div>
+            <h3>Relatórios &amp; IA</h3>
+            <p>Acompanhe previsões de demanda, padrões de uso e recomendações inteligentes.</p>
+        </a>
+
+        <a href="#" class="painel-card disabled">
+            <span class="em-breve-tag">em breve</span>
+            <div class="card-number">04</div>
+            <h3>Minha conta</h3>
+            <p>Altere seu nome, email ou senha.</p>
+        </a>
+    </section>
+
+    <footer class="footer">
+        <div class="logo">⚡ ChargeGrid <span>Intelligence</span></div>
+        <div class="tech-badges">
+            <span class="tech-badge">Python</span>
+            <span class="tech-badge">Flask</span>
+            <span class="tech-badge">SQLAlchemy</span>
+            <span class="tech-badge">PostgreSQL</span>
+            <span class="tech-badge">IA</span>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('btn-sair').addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        });
+    </script>
+
+</body>
+
+</html>
