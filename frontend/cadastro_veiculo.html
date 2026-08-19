@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastrar Veículo · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="auth-wrapper">
+        <div class="auth-card" style="max-width: 460px;">
+            <span class="badge-step">ETAPA 2 DE 2 · VEÍCULO</span>
+            <h2>Cadastre seu veículo</h2>
+            <p class="subtitle">Esses dados serão usados para estimar tempo e custo de carregamento.</p>
+
+            <form id="form-veiculo">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="placa">Placa</label>
+                        <input type="text" id="placa" name="placa" placeholder="Ex: ABC1D23">
+                    </div>
+                    <div class="form-group">
+                        <label for="marca">Marca</label>
+                        <input type="text" id="marca" name="marca" placeholder="Ex: BYD">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modelo">Modelo</label>
+                        <input type="text" id="modelo" name="modelo" placeholder="Ex: Dolphin">
+                    </div>
+                    <div class="form-group">
+                        <label for="capacidade">Capacidade da bateria (kWh)</label>
+                        <input type="number" id="capacidade" step="0.1" placeholder="Ex: 44.9">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="percentual">Percentual atual da bateria (%)</label>
+                    <input type="number" id="percentual" min="0" max="100" step="1" placeholder="Ex: 35">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full">Concluir cadastro</button>
+                <div id="mensagem" class="msg"></div>
+            </form>
+
+            <p class="footer-link">
+                <button type="button" class="btn-ghost" id="pular">Fazer isso depois</button>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('form-veiculo');
+        const mensagem = document.getElementById('mensagem');
+        const pular = document.getElementById('pular');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            mensagem.className = 'msg';
+
+            const dados = {
+                placa: document.getElementById('placa').value,
+                marca: document.getElementById('marca').value,
+                modelo: document.getElementById('modelo').value,
+                capacidade_bateria_kwh: document.getElementById('capacidade').value,
+                percentual_atual: document.getElementById('percentual').value,
+            };
+
+            try {
+                const resposta = await fetch('/api/veiculo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados),
+                });
+                const resultado = await resposta.json();
+
+                if (!resposta.ok) {
+                    mensagem.textContent = resultado.erro || 'Não foi possível salvar o veículo.';
+                    mensagem.className = 'msg erro';
+                    return;
+                }
+
+                mensagem.textContent = resultado.mensagem + ' Redirecionando...';
+                mensagem.className = 'msg sucesso';
+                setTimeout(() => window.location.href = resultado.redirect || '/painel', 900);
+            } catch (err) {
+                mensagem.textContent = 'Erro de conexão com o servidor.';
+                mensagem.className = 'msg erro';
+            }
+        });
+
+        pular.addEventListener('click', () => {
+            window.location.href = '/painel';
+        });
+    </script>
+
+</body>
+
+</html>
