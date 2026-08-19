@@ -3,10 +3,14 @@ backend/main.py
 
 Backend do ChargeGrid Intelligence.
 
-Fluxo de onboarding em duas etapas:
-1. /cadastro       -> cria a conta (nome, email, senha) e já loga o usuário.
-2. /cadastro-veiculo -> usuário logado cadastra o veículo (etapa separada).
-Depois disso, o usuário cai no /painel, com as 4 áreas do sistema.
+Fluxo de onboarding:
+1. /cadastro         -> cria a conta (nome, email, senha) e já loga o usuário.
+2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
+3. /painel           -> as 4 áreas do sistema. O card de veículo muda de
+   "Cadastrar veículo" para "Meu veículo" assim que o usuário tiver um
+   veículo salvo.
+
+Login também vai direto para /painel (o veículo nunca é obrigatório).
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
@@ -120,11 +124,16 @@ def pagina_cadastro_veiculo():
 @app.route("/painel")
 @login_required
 def painel():
-    return render_template("painel.html", usuario=usuario_atual())
+    usuario = usuario_atual()
+    return render_template(
+        "painel.html",
+        usuario=usuario,
+        tem_veiculo=usuario.veiculo is not None,
+    )
 
 
 # ---------------------------------------------------------------------------
-# API - CADASTRO DE CONTA (ETAPA 1)
+# API - CADASTRO DE CONTA
 # ---------------------------------------------------------------------------
 
 @app.route("/api/cadastro", methods=["POST"])
@@ -146,7 +155,7 @@ def api_cadastro():
     db.session.add(novo_usuario)
     db.session.commit()
 
-    # Já loga o usuário para seguir direto para a etapa 2 (cadastro do veículo).
+    # Já loga o usuário para seguir direto para a tela de escolha do veículo.
     session["usuario_id"] = novo_usuario.id
 
     return jsonify({
@@ -156,7 +165,7 @@ def api_cadastro():
 
 
 # ---------------------------------------------------------------------------
-# API - CADASTRO DE VEÍCULO (ETAPA 2)
+# API - CADASTRO DE VEÍCULO
 # ---------------------------------------------------------------------------
 
 @app.route("/api/veiculo", methods=["POST"])
@@ -204,6 +213,7 @@ def api_login():
         return jsonify({"erro": "Email ou senha inválidos."}), 401
 
     session["usuario_id"] = usuario.id
+    # Login vai direto para o painel — o veículo nunca é obrigatório aqui.
     return jsonify({"mensagem": "Login realizado com sucesso.", "redirect": url_for("painel")})
 
 

@@ -1,0 +1,26 @@
+<nav class="navbar">
+  <a href="/painel" class="logo">
+    <img src="/static/img/hero_2.jpg" alt="GoodWe" class="logo-badge">
+    ChargeGrid <span>Intelligence</span>
+  </a>
+
+  <div class="nav-links">
+    <a href="/painel" class="active">Painel</a>
+    <a href="/#como-funciona">Como funciona</a>
+  </div>
+
+  <div class="nav-actions">
+    <div class="profile-icon">👤</div>
+    <button id="btn-sair" class="btn btn-outline btn-sm">Sair</button>
+    <button class="nav-toggle" aria-label="Abrir menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<script>
+  document.getElementById('btn-sair').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/';
+  });
+</script>

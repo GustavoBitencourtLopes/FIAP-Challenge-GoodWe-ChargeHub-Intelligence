@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cadastrar Veículo · ChargeGrid Intelligence</title>
+  <title>Editar Veículo · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -11,39 +11,38 @@
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
 
-  {% include 'partials/_navbar_minima.html' %}
+  {% include 'partials/_navbar_logado.html' %}
 
   <div class="auth-wrapper">
     <div class="auth-card" style="max-width: 440px;">
-      <span class="badge-step">CONTA CRIADA COM SUCESSO</span>
-      <h2>Quer cadastrar seu veículo agora?</h2>
-      <p class="subtitle">Guardamos apenas os dados básicos do carro. Detalhes de carregamento você informa depois, na hora de carregar.</p>
+      <h2>Editar veículo</h2>
+      <p class="subtitle">Atualize os dados do seu carro.</p>
 
-      <form id="form-veiculo">
+      <form id="form-editar">
         <div class="form-row">
           <div class="form-group">
             <label for="marca">Marca</label>
-            <input type="text" id="marca" name="marca" placeholder="Ex: BYD">
+            <input type="text" id="marca" value="{{ veiculo.marca or '' }}">
           </div>
           <div class="form-group">
             <label for="modelo">Modelo</label>
-            <input type="text" id="modelo" name="modelo" placeholder="Ex: Dolphin">
+            <input type="text" id="modelo" value="{{ veiculo.modelo or '' }}">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label for="placa">Placa</label>
-            <input type="text" id="placa" name="placa" placeholder="Ex: ABC1D23">
+            <input type="text" id="placa" value="{{ veiculo.placa or '' }}">
           </div>
           <div class="form-group">
             <label for="ano">Ano</label>
-            <input type="number" id="ano" name="ano" placeholder="Ex: 2024" min="1990" max="2030">
+            <input type="number" id="ano" min="1990" max="2030" value="{{ veiculo.ano or '' }}">
           </div>
         </div>
 
         <div class="choice-actions">
-          <button type="button" id="mais-tarde" class="btn btn-outline btn-full">Mais tarde</button>
-          <button type="submit" class="btn btn-primary btn-full">Cadastrar agora</button>
+          <a href="/veiculo/{{ veiculo.id }}" class="btn btn-outline btn-full">Cancelar</a>
+          <button type="submit" class="btn btn-primary btn-full">Salvar</button>
         </div>
         <div id="mensagem" class="msg"></div>
       </form>
@@ -53,23 +52,22 @@
   {% include 'partials/_footer.html' %}
 
   <script>
-    const form = document.getElementById('form-veiculo');
+    const form = document.getElementById('form-editar');
     const mensagem = document.getElementById('mensagem');
-    const maisTarde = document.getElementById('mais-tarde');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       mensagem.className = 'msg';
 
       const dados = {
-        placa: document.getElementById('placa').value,
         marca: document.getElementById('marca').value,
         modelo: document.getElementById('modelo').value,
+        placa: document.getElementById('placa').value,
         ano: document.getElementById('ano').value,
       };
 
       try {
-        const resposta = await fetch('/api/veiculo', {
+        const resposta = await fetch('/api/veiculo/{{ veiculo.id }}', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dados),
@@ -77,22 +75,18 @@
         const resultado = await resposta.json();
 
         if (!resposta.ok) {
-          mensagem.textContent = resultado.erro || 'Não foi possível salvar o veículo.';
+          mensagem.textContent = resultado.erro || 'Não foi possível salvar as alterações.';
           mensagem.className = 'msg erro';
           return;
         }
 
-        mensagem.textContent = resultado.mensagem + ' Redirecionando...';
+        mensagem.textContent = resultado.mensagem;
         mensagem.className = 'msg sucesso';
-        setTimeout(() => window.location.href = resultado.redirect || '/painel', 900);
+        setTimeout(() => window.location.href = resultado.redirect || '/meus-veiculos', 700);
       } catch (err) {
         mensagem.textContent = 'Erro de conexão com o servidor.';
         mensagem.className = 'msg erro';
       }
-    });
-
-    maisTarde.addEventListener('click', () => {
-      window.location.href = '/painel';
     });
   </script>
 

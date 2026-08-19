@@ -1,77 +1,78 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrar · ChargeGrid Intelligence</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
-
 <body>
 
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
 
-    <div class="auth-wrapper">
-        <div class="auth-card">
-            <h2>Bem-vindo de volta</h2>
-            <p class="subtitle">Entre para acompanhar suas sessões de carregamento.</p>
+  {% include 'partials/_navbar_minima.html' %}
 
-            <form id="form-login">
-                <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required>
-                </div>
-                <div class="form-group">
-                    <label for="senha">Senha</label>
-                    <input type="password" id="senha" name="senha" required>
-                </div>
-                <button type="submit" class="btn btn-primary btn-full">Entrar</button>
-                <div id="mensagem" class="msg"></div>
-            </form>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <h2>Bem-vindo de volta</h2>
+      <p class="subtitle">Entre para acompanhar suas sessões de carregamento.</p>
 
-            <p class="footer-link">Não tem conta? <a href="/cadastro">Criar conta</a></p>
+      <form id="form-login">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
         </div>
+        <div class="form-group">
+          <label for="senha">Senha</label>
+          <input type="password" id="senha" name="senha" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Entrar</button>
+        <div id="mensagem" class="msg"></div>
+      </form>
+
+      <p class="footer-link">Não tem conta? <a href="/cadastro">Criar conta</a></p>
     </div>
+  </div>
 
-    <script>
-        const form = document.getElementById('form-login');
-        const mensagem = document.getElementById('mensagem');
+  {% include 'partials/_footer.html' %}
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            mensagem.className = 'msg';
+  <script>
+    const form = document.getElementById('form-login');
+    const mensagem = document.getElementById('mensagem');
 
-            const dados = {
-                email: document.getElementById('email').value,
-                senha: document.getElementById('senha').value,
-            };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      mensagem.className = 'msg';
 
-            try {
-                const resposta = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dados),
-                });
-                const resultado = await resposta.json();
+      const dados = {
+        email: document.getElementById('email').value,
+        senha: document.getElementById('senha').value,
+      };
 
-                if (!resposta.ok) {
-                    mensagem.textContent = resultado.erro || 'Não foi possível entrar.';
-                    mensagem.className = 'msg erro';
-                    return;
-                }
-
-                mensagem.textContent = resultado.mensagem;
-                mensagem.className = 'msg sucesso';
-                window.location.href = resultado.redirect || '/';
-            } catch (err) {
-                mensagem.textContent = 'Erro de conexão com o servidor.';
-                mensagem.className = 'msg erro';
-            }
+      try {
+        const resposta = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados),
         });
-    </script>
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          mensagem.textContent = resultado.erro || 'Não foi possível entrar.';
+          mensagem.className = 'msg erro';
+          return;
+        }
+
+        mensagem.textContent = resultado.mensagem;
+        mensagem.className = 'msg sucesso';
+        window.location.href = resultado.redirect || '/';
+      } catch (err) {
+        mensagem.textContent = 'Erro de conexão com o servidor.';
+        mensagem.className = 'msg erro';
+      }
+    });
+  </script>
 
 </body>
-
 </html>

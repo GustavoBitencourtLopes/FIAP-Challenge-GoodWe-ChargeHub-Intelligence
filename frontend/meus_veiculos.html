@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meus Carros · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_logado.html' %}
+
+  <section class="painel-header">
+    <a href="/painel" class="back-link">← Voltar ao painel</a>
+    <h1>Meus carros</h1>
+    <p>Selecione um veículo para ver os detalhes.</p>
+  </section>
+
+  {% if veiculos %}
+  <section class="painel-grid">
+    {% for veiculo in veiculos %}
+    <a href="/veiculo/{{ veiculo.id }}" class="painel-card">
+      <div class="card-number">🚗</div>
+      <h3>{{ veiculo.marca or 'Marca não informada' }} {{ veiculo.modelo or '' }}</h3>
+      <p>Placa: {{ veiculo.placa or '—' }} · Ano: {{ veiculo.ano or '—' }}</p>
+    </a>
+    {% endfor %}
+  </section>
+  {% else %}
+  <div class="detail-wrapper">
+    <div class="empty-state">
+      <h3>Nenhum veículo cadastrado</h3>
+      <p>Cadastre seu veículo para liberar as simulações de carregamento.</p>
+      <br>
+      <a href="/cadastro-veiculo" class="btn btn-primary">Cadastrar veículo</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

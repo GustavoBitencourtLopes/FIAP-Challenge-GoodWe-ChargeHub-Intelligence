@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ veiculo.marca or 'Veículo' }} {{ veiculo.modelo or '' }} · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_logado.html' %}
+
+  <div class="detail-wrapper">
+    <a href="/meus-veiculos" class="back-link">← Voltar aos meus carros</a>
+
+    <div class="detail-card">
+      <h2>{{ veiculo.marca or 'Marca não informada' }} {{ veiculo.modelo or '' }}</h2>
+      <p class="subtitle">Informações do veículo cadastrado.</p>
+
+      <div class="detail-field">
+        <span class="field-label">Marca</span>
+        <span class="field-value">{{ veiculo.marca or '—' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Modelo</span>
+        <span class="field-value">{{ veiculo.modelo or '—' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Placa</span>
+        <span class="field-value">{{ veiculo.placa or '—' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Ano</span>
+        <span class="field-value">{{ veiculo.ano or '—' }}</span>
+      </div>
+
+      <div class="detail-actions">
+        <a href="/veiculo/{{ veiculo.id }}/editar" class="btn btn-outline btn-full">Editar</a>
+        <button id="btn-excluir" class="btn btn-danger btn-full">Excluir</button>
+      </div>
+      <div id="mensagem" class="msg"></div>
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+  <script>
+    document.getElementById('btn-excluir').addEventListener('click', async () => {
+      const confirmado = confirm('Tem certeza que deseja excluir este veículo? Essa ação não pode ser desfeita.');
+      if (!confirmado) return;
+
+      const mensagem = document.getElementById('mensagem');
+      try {
+        const resposta = await fetch('/api/veiculo/{{ veiculo.id }}/excluir', { method: 'POST' });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          mensagem.textContent = resultado.erro || 'Não foi possível excluir o veículo.';
+          mensagem.className = 'msg erro';
+          return;
+        }
+
+        window.location.href = resultado.redirect || '/painel';
+      } catch (err) {
+        mensagem.textContent = 'Erro de conexão com o servidor.';
+        mensagem.className = 'msg erro';
+      }
+    });
+  </script>
+</body>
+</html>

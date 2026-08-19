@@ -1,72 +1,63 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChargeGrid Intelligence</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
-
 <body>
 
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
 
-    <nav class="navbar">
-        <div class="logo">⚡ ChargeGrid <span>Intelligence</span></div>
-        <div class="nav-links">
-            <a href="#como-funciona">Como funciona</a>
-        </div>
-        <div class="nav-actions">
-            <a href="/login" class="btn btn-outline">Entrar</a>
-            <a href="/cadastro" class="btn btn-primary">Criar conta</a>
-        </div>
-    </nav>
+  {% include 'partials/_navbar_publico.html' %}
 
-    <section class="hero">
-        <span class="badge">FIAP EV CHALLENGE 2026 · GOODWE</span>
-        <h1>Transforme cada <span class="highlight">recarga</span> em inteligência.</h1>
-        <p>
-            A ChargeGrid Intelligence simula uma rede de carregadores de veículos elétricos
-            em ambientes comerciais. Cadastre seu veículo, simule sessões de carregamento e
-            acompanhe estimativas de tempo, custo e recomendações geradas por IA.
-        </p>
-        <div class="actions">
-            <a href="/cadastro" class="btn btn-primary">Criar minha conta</a>
-            <a href="/login" class="btn btn-outline">Já tenho conta</a>
-        </div>
-    </section>
+  <section class="hero" id="sobre">
+    <span class="badge">FIAP EV CHALLENGE 2026 · GOODWE</span>
+    <h1>Transforme cada recarga <span class="highlight">em inteligência.</span></h1>
+    <p>
+      A ChargeGrid Intelligence simula uma rede de carregadores de veículos elétricos
+      em ambientes comerciais. Cadastre seu veículo, simule sessões de carregamento e
+      acompanhe estimativas de tempo, custo e recomendações geradas por IA.
+    </p>
+    <div class="actions">
+      <a href="/cadastro" class="btn btn-primary">Criar minha conta</a>
+      <a href="/login" class="btn btn-outline">Já tenho conta</a>
+    </div>
+  </section>
 
-    <section class="steps" id="como-funciona">
-        <div class="step-card">
-            <div class="step-number">01 · CONTA</div>
-            <h3>Crie sua conta</h3>
-            <p>Cadastre seu nome, email e senha em poucos segundos para começar.</p>
-        </div>
-        <div class="step-card">
-            <div class="step-number">02 · VEÍCULO</div>
-            <h3>Cadastre seu veículo</h3>
-            <p>Informe placa, modelo e capacidade da bateria para simulações precisas.</p>
-        </div>
-        <div class="step-card">
-            <div class="step-number">03 · SIMULAÇÃO</div>
-            <h3>Inicie o carregamento</h3>
-            <p>Acompanhe tempo, custo e recomendações inteligentes em tempo real.</p>
-        </div>
-    </section>
+  <a href="/cadastro" class="cta-ribbon">
+    <span>Comece agora e cadastre seu veículo</span>
+    <span class="arrow">→</span>
+  </a>
 
-    <footer class="footer">
-        <div class="logo">⚡ ChargeGrid <span>Intelligence</span></div>
-        <div class="tech-badges">
-            <span class="tech-badge">Python</span>
-            <span class="tech-badge">Flask</span>
-            <span class="tech-badge">SQLAlchemy</span>
-            <span class="tech-badge">PostgreSQL</span>
-            <span class="tech-badge">IA</span>
-        </div>
-    </footer>
+  <section class="section-heading" id="como-funciona">
+    <div class="eyebrow">Como funciona</div>
+    <h2>Do cadastro à inteligência, em 3 passos</h2>
+  </section>
 
+  <section class="steps">
+    <div class="step-card">
+      <div class="step-number">01 · CONTA</div>
+      <h3>Crie sua conta</h3>
+      <p>Cadastre seu nome, email e senha em poucos segundos para começar.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">02 · VEÍCULO</div>
+      <h3>Cadastre seu veículo</h3>
+      <p>Informe marca, modelo, placa e ano em poucos cliques.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">03 · SIMULAÇÃO</div>
+      <h3>Inicie o carregamento</h3>
+      <p>Acompanhe tempo, custo e recomendações inteligentes em tempo real.</p>
+    </div>
+  </section>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
 </body>
-
 </html>

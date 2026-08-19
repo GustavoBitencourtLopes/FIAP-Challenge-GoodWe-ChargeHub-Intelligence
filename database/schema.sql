@@ -14,11 +14,13 @@ CREATE TABLE usuarios (
 
 CREATE TABLE veiculos (
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     placa VARCHAR(10),
     marca VARCHAR(60),
     modelo VARCHAR(60),
-    capacidade_bateria_kwh NUMERIC(6, 2),
-    percentual_atual NUMERIC(5, 2) DEFAULT 0,
+    ano INTEGER,
+    -- Preenchidos futuramente pela funcionalidade "Fazer carregamento":
+    capacidade_bateria_kwh NUMERIC(6,2),
+    percentual_atual NUMERIC(5,2) DEFAULT 0,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
