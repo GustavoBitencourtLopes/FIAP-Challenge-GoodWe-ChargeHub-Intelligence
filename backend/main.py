@@ -6,21 +6,30 @@ Backend do ChargeGrid Intelligence.
 Fluxo de onboarding:
 1. /cadastro         -> cria a conta (nome, email, senha) e já loga o usuário.
 2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
-3. /painel           -> as 4 áreas do sistema. O card de veículo muda de
-   "Cadastrar veículo" para "Meu veículo" assim que o usuário tiver um
-   veículo salvo.
+   Aqui só pedimos marca, modelo, placa e ano. Dados de bateria/percentual
+   ficam para a futura funcionalidade de "Fazer carregamento".
+3. /painel           -> as 4 áreas do sistema.
+4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo
+   (listar, ver detalhes, editar, excluir).
 
 Login também vai direto para /painel (o veículo nunca é obrigatório).
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
 será usado quando migrarmos para PostgreSQL.
+
+IMPORTANTE PARA DEPLOY (Render/produção):
+Em produção, quem roda esta aplicação é o gunicorn, que apenas IMPORTA
+este arquivo e usa a variável `app` — o bloco `if __name__ == "__main__"`
+não é executado. Por isso, a criação das tabelas (`db.create_all()`)
+acontece logo abaixo, fora desse bloco, para rodar tanto localmente
+quanto em produção.
 """
 
 import os
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -34,7 +43,7 @@ app = Flask(
     static_url_path="/static",
 )
 
-app.config["SECRET_KEY"] = "troque-esta-chave-antes-de-ir-para-producao"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "troque-esta-chave-antes-de-ir-para-producao")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "chargegrid.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -72,8 +81,16 @@ class Veiculo(db.Model):
     placa = db.Column(db.String(10))
     marca = db.Column(db.String(60))
     modelo = db.Column(db.String(60))
+    ano = db.Column(db.Integer)
+    # Preenchidos futuramente pela funcionalidade "Fazer carregamento":
     capacidade_bateria_kwh = db.Column(db.Float)
     percentual_atual = db.Column(db.Float, default=0)
+
+
+# Cria as tabelas do banco. Roda tanto localmente ("python main.py")
+# quanto em produção (quando o gunicorn importa este módulo).
+with app.app_context():
+    db.create_all()
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +111,14 @@ def login_required(view_func):
 
 def usuario_atual():
     return Usuario.query.get(session.get("usuario_id"))
+
+
+def veiculo_do_usuario_ou_404(veiculo_id):
+    """Busca o veículo garantindo que ele pertence ao usuário logado."""
+    veiculo = Veiculo.query.get_or_404(veiculo_id)
+    if veiculo.usuario_id != session.get("usuario_id"):
+        abort(403)
+    return veiculo
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +157,28 @@ def painel():
     )
 
 
+@app.route("/meus-veiculos")
+@login_required
+def meus_veiculos():
+    usuario = usuario_atual()
+    veiculos = [usuario.veiculo] if usuario.veiculo else []
+    return render_template("meus_veiculos.html", veiculos=veiculos)
+
+
+@app.route("/veiculo/<int:veiculo_id>")
+@login_required
+def veiculo_detalhe(veiculo_id):
+    veiculo = veiculo_do_usuario_ou_404(veiculo_id)
+    return render_template("veiculo_detalhe.html", veiculo=veiculo)
+
+
+@app.route("/veiculo/<int:veiculo_id>/editar")
+@login_required
+def veiculo_editar_pagina(veiculo_id):
+    veiculo = veiculo_do_usuario_ou_404(veiculo_id)
+    return render_template("veiculo_editar.html", veiculo=veiculo)
+
+
 # ---------------------------------------------------------------------------
 # API - CADASTRO DE CONTA
 # ---------------------------------------------------------------------------
@@ -165,27 +212,27 @@ def api_cadastro():
 
 
 # ---------------------------------------------------------------------------
-# API - CADASTRO DE VEÍCULO
+# API - VEÍCULO (CRIAR / ATUALIZAR / EXCLUIR)
 # ---------------------------------------------------------------------------
+
+def _ano_para_int(valor):
+    try:
+        return int(valor) if valor not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
 
 @app.route("/api/veiculo", methods=["POST"])
 @login_required
-def api_veiculo():
+def api_veiculo_criar():
     dados = request.get_json(silent=True) or {}
     usuario = usuario_atual()
 
-    placa = (dados.get("placa") or "").strip()
-    marca = (dados.get("marca") or "").strip()
-    modelo = (dados.get("modelo") or "").strip()
-    capacidade = dados.get("capacidade_bateria_kwh")
-    percentual_atual = dados.get("percentual_atual")
-
     veiculo = usuario.veiculo or Veiculo(usuario_id=usuario.id)
-    veiculo.placa = placa or None
-    veiculo.marca = marca or None
-    veiculo.modelo = modelo or None
-    veiculo.capacidade_bateria_kwh = float(capacidade) if capacidade else None
-    veiculo.percentual_atual = float(percentual_atual) if percentual_atual else 0
+    veiculo.placa = (dados.get("placa") or "").strip() or None
+    veiculo.marca = (dados.get("marca") or "").strip() or None
+    veiculo.modelo = (dados.get("modelo") or "").strip() or None
+    veiculo.ano = _ano_para_int(dados.get("ano"))
 
     db.session.add(veiculo)
     db.session.commit()
@@ -194,6 +241,39 @@ def api_veiculo():
         "mensagem": "Veículo cadastrado com sucesso.",
         "redirect": url_for("painel"),
     }), 201
+
+
+@app.route("/api/veiculo/<int:veiculo_id>", methods=["POST"])
+@login_required
+def api_veiculo_atualizar(veiculo_id):
+    veiculo = veiculo_do_usuario_ou_404(veiculo_id)
+    dados = request.get_json(silent=True) or {}
+
+    veiculo.placa = (dados.get("placa") or "").strip() or None
+    veiculo.marca = (dados.get("marca") or "").strip() or None
+    veiculo.modelo = (dados.get("modelo") or "").strip() or None
+    veiculo.ano = _ano_para_int(dados.get("ano"))
+
+    db.session.commit()
+
+    return jsonify({
+        "mensagem": "Veículo atualizado com sucesso.",
+        "redirect": url_for("veiculo_detalhe", veiculo_id=veiculo.id),
+    })
+
+
+@app.route("/api/veiculo/<int:veiculo_id>/excluir", methods=["POST"])
+@login_required
+def api_veiculo_excluir(veiculo_id):
+    veiculo = veiculo_do_usuario_ou_404(veiculo_id)
+
+    db.session.delete(veiculo)
+    db.session.commit()
+
+    return jsonify({
+        "mensagem": "Veículo removido com sucesso.",
+        "redirect": url_for("painel"),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +304,4 @@ def api_logout():
 
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
