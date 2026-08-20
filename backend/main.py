@@ -9,6 +9,7 @@ Fluxo de onboarding:
 3. /painel           -> as 4 áreas do sistema.
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
 5. /carregamento     -> simulação de uma sessão de carregamento.
+6. /minha-conta      -> visualizar dados da conta e trocar senha.
 
 A tela inicial ("/") é pública, mas verifica se existe uma sessão ativa para
 trocar os botões "Entrar / Criar conta" por "Ir para o painel" (ver rota
@@ -196,6 +197,13 @@ def painel():
         usuario=usuario,
         tem_veiculo=usuario.veiculo is not None,
     )
+
+
+@app.route("/minha-conta")
+@login_required
+def pagina_minha_conta():
+    usuario = usuario_atual()
+    return render_template("minha_conta.html", usuario=usuario)
 
 
 @app.route("/meus-veiculos")
@@ -444,6 +452,34 @@ def api_carregamento_simular():
         "valor_final": round(valor_final, 2),
         "recomendacao": RECOMENDACOES[nivel],
     })
+
+
+# ---------------------------------------------------------------------------
+# API - CONTA (TROCA DE SENHA)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/conta/senha", methods=["POST"])
+@login_required
+def api_conta_alterar_senha():
+    usuario = usuario_atual()
+    dados = request.get_json(silent=True) or {}
+
+    senha_atual = dados.get("senha_atual") or ""
+    nova_senha = dados.get("nova_senha") or ""
+
+    if not senha_atual or not nova_senha:
+        return jsonify({"erro": "Informe a senha atual e a nova senha."}), 400
+
+    if len(nova_senha) < 6:
+        return jsonify({"erro": "A nova senha precisa ter pelo menos 6 caracteres."}), 400
+
+    if not usuario.checar_senha(senha_atual):
+        return jsonify({"erro": "Senha atual incorreta."}), 401
+
+    usuario.set_senha(nova_senha)
+    db.session.commit()
+
+    return jsonify({"mensagem": "Senha alterada com sucesso."})
 
 
 # ---------------------------------------------------------------------------
