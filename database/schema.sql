@@ -19,8 +19,32 @@ CREATE TABLE veiculos (
     marca VARCHAR(60),
     modelo VARCHAR(60),
     ano INTEGER,
-    -- Preenchidos futuramente pela funcionalidade "Fazer carregamento":
     capacidade_bateria_kwh NUMERIC(6,2),
     percentual_atual NUMERIC(5,2) DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sessoes_carregamento (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
+
+    percentual_inicial NUMERIC(5,2),
+    percentual_final NUMERIC(5,2),
+    energia_kwh NUMERIC(6,2),
+
+    tempo_carregamento_min NUMERIC(6,1),
+    tempo_espera_min NUMERIC(6,1),
+    tempo_total_min NUMERIC(6,1),
+
+    nivel_demanda VARCHAR(10), -- baixa | media | alta
+    carregadores_disponiveis INTEGER,
+    carregadores_ocupados INTEGER,
+
+    tarifa_kwh NUMERIC(6,2),
+    valor_total NUMERIC(8,2),
+    desconto NUMERIC(8,2),
+    valor_final NUMERIC(8,2),
+
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -41,12 +41,20 @@
     </a>
     {% endif %}
 
-    <a href="#" class="painel-card disabled">
-      <span class="status-tag em-breve">em breve</span>
+    {% if tem_veiculo %}
+    <a href="/carregamento" class="painel-card">
       <div class="card-number">03</div>
       <h3>Fazer carregamento</h3>
       <p>Simule uma sessão e veja tempo, custo e disponibilidade estimados.</p>
     </a>
+    {% else %}
+    <a href="#" class="painel-card disabled">
+      <span class="status-tag em-breve">cadastre um veículo</span>
+      <div class="card-number">03</div>
+      <h3>Fazer carregamento</h3>
+      <p>Simule uma sessão e veja tempo, custo e disponibilidade estimados.</p>
+    </a>
+    {% endif %}
 
     <a href="#" class="painel-card disabled">
       <span class="status-tag em-breve">em breve</span>
