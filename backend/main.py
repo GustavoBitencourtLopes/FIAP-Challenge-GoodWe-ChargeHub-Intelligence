@@ -10,8 +10,9 @@ Fluxo de onboarding:
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
 5. /carregamento     -> simulação de uma sessão de carregamento.
 
-Login também vai direto para /painel (o veículo nunca é obrigatório, exceto
-para simular carregamento, que precisa de um veículo cadastrado).
+A tela inicial ("/") é pública, mas verifica se existe uma sessão ativa para
+trocar os botões "Entrar / Criar conta" por "Ir para o painel" (ver rota
+tela_principal abaixo).
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
@@ -27,9 +28,7 @@ NOTA SOBRE SESSÕES "FANTASMA": como o banco SQLite em produção é apagado
 a cada novo deploy (plano gratuito do Render), é possível que o navegador
 de alguém ainda tenha um cookie de sessão apontando para um usuário que
 não existe mais no banco novo. Por isso, `login_required` verifica se o
-usuário realmente existe no banco (não só se o id está na sessão) — caso
-não exista, a sessão é limpa e a pessoa é redirecionada para o login em
-vez de o site quebrar com erro 500.
+usuário realmente existe no banco (não só se o id está na sessão).
 """
 
 import os
@@ -125,8 +124,6 @@ class SessaoCarregamento(db.Model):
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# Cria as tabelas do banco. Roda tanto localmente ("python main.py")
-# quanto em produção (quando o gunicorn importa este módulo).
 with app.app_context():
     db.create_all()
 
@@ -136,9 +133,7 @@ with app.app_context():
 # ---------------------------------------------------------------------------
 
 def login_required(view_func):
-    """Bloqueia rotas que exigem login E limpa sessões 'fantasma' (usuário
-    que não existe mais no banco, por exemplo após o SQLite ser recriado
-    em um novo deploy)."""
+    """Bloqueia rotas que exigem login E limpa sessões 'fantasma'."""
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -158,7 +153,6 @@ def usuario_atual():
 
 
 def veiculo_do_usuario_ou_404(veiculo_id):
-    """Busca o veículo garantindo que ele pertence ao usuário logado."""
     veiculo = Veiculo.query.get_or_404(veiculo_id)
     if veiculo.usuario_id != session.get("usuario_id"):
         abort(403)
@@ -171,7 +165,10 @@ def veiculo_do_usuario_ou_404(veiculo_id):
 
 @app.route("/")
 def tela_principal():
-    return render_template("tela_principal.html")
+    # A tela inicial é pública, mas verificamos se existe uma sessão válida
+    # para trocar os botões "Entrar / Criar conta" por "Ir para o painel".
+    logado = usuario_atual() is not None
+    return render_template("tela_principal.html", logado=logado)
 
 
 @app.route("/login")
@@ -333,7 +330,7 @@ def api_veiculo_excluir(veiculo_id):
 # ---------------------------------------------------------------------------
 
 TOTAL_CARREGADORES = 4
-POTENCIA_CARREGADOR_KW = 7.0  # mesma potência do GW7K-HCA-20 (linha HCA G2 da GoodWe)
+POTENCIA_CARREGADOR_KW = 7.0
 
 TARIFAS_POR_KWH = {"baixa": 0.79, "media": 0.99, "alta": 1.29}
 ESPERA_MINUTOS = {"baixa": 0, "media": 8, "alta": 18}
@@ -347,10 +344,8 @@ RECOMENDACOES = {
 
 
 def _simular_ocupacao(horario):
-    """Sorteia o status de cada carregador simulado. Em horário de pico,
-    a chance de estar ocupado é maior."""
     if horario == "pico":
-        pesos = [0.15, 0.35, 0.50]  # disponível, carregando, ocupado
+        pesos = [0.15, 0.35, 0.50]
     else:
         pesos = [0.55, 0.30, 0.15]
 
@@ -408,8 +403,6 @@ def api_carregamento_simular():
     desconto = valor_total * DESCONTO_PERCENTUAL[nivel]
     valor_final = valor_total - desconto
 
-    # Persiste os dados de bateria no veículo (para pré-preencher da próxima vez)
-    # e atualiza o percentual atual, simulando que o carregamento foi concluído.
     veiculo.capacidade_bateria_kwh = capacidade_kwh
     veiculo.percentual_atual = percentual_desejado
 

@@ -10,8 +10,12 @@
   </div>
 
   <div class="nav-actions">
-    <a href="/login" class="btn btn-outline btn-sm"><span class="only-desktop">Entrar</span></a>
-    <a href="/cadastro" class="btn btn-primary btn-sm">Criar conta</a>
+    {% if logado %}
+      <a href="/painel" class="btn btn-primary btn-sm">Ir para o painel</a>
+    {% else %}
+      <a href="/login" class="btn btn-outline btn-sm"><span class="only-desktop">Entrar</span></a>
+      <a href="/cadastro" class="btn btn-primary btn-sm">Criar conta</a>
+    {% endif %}
     <button class="nav-toggle" aria-label="Abrir menu">
       <span></span><span></span><span></span>
     </button>

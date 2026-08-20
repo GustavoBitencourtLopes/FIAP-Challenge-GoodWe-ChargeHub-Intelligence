@@ -29,6 +29,9 @@ body {
   position: relative;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  /* Rodapé grudado no fundo mesmo quando o conteúdo é curto */
+  display: flex;
+  flex-direction: column;
 }
 
 img { max-width: 100%; display: block; }
@@ -91,6 +94,7 @@ img { max-width: 100%; display: block; }
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid transparent;
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  flex-shrink: 0;
 }
 
 .navbar.scrolled {
@@ -261,7 +265,7 @@ img { max-width: 100%; display: block; }
 }
 
 /* ---------------------------------------------------------------- */
-/* HERO (texto centralizado, sem imagem)                              */
+/* HERO                                                                */
 /* ---------------------------------------------------------------- */
 
 .hero {
@@ -413,36 +417,39 @@ img { max-width: 100%; display: block; }
 .step-card p { margin: 0; color: var(--text-dim); font-size: 0.88rem; line-height: 1.55; }
 
 /* ---------------------------------------------------------------- */
-/* FOOTER                                                               */
+/* FOOTER (compacto, sempre grudado no fundo)                          */
 /* ---------------------------------------------------------------- */
 
 .footer {
   position: relative;
   z-index: 1;
   border-top: 1px solid var(--border);
-  padding: 36px 48px;
+  padding: 18px 48px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .footer .logo {
   font-family: 'Poppins', 'Segoe UI', sans-serif;
   font-weight: 800;
+  font-size: 0.95rem;
   text-transform: uppercase;
   letter-spacing: 0.01em;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--text);
   text-decoration: none;
 }
 
 .footer .logo span { color: var(--red); }
 
-.footer .footer-note { color: var(--text-dim); font-size: 0.85rem; }
+.footer .footer-note { color: var(--text-dim); font-size: 0.8rem; }
 
 /* ---------------------------------------------------------------- */
 /* BOTÃO VOLTAR AO TOPO                                                 */
@@ -491,7 +498,7 @@ img { max-width: 100%; display: block; }
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 72px);
+  flex: 1;
   padding: 40px 24px;
 }
 
@@ -599,6 +606,7 @@ img { max-width: 100%; display: block; }
   margin: 50px auto 36px;
   padding: 0 48px;
   animation: fade-up 0.6s ease both;
+  width: 100%;
 }
 
 .painel-header h1 { margin: 0 0 6px; font-size: 2rem; }
@@ -619,11 +627,13 @@ img { max-width: 100%; display: block; }
   position: relative;
   z-index: 1;
   max-width: 1180px;
-  margin: 0 auto 100px;
+  margin: 0 auto 60px;
   padding: 0 48px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
+  width: 100%;
+  flex: 1;
 }
 
 .painel-card {
@@ -637,6 +647,7 @@ img { max-width: 100%; display: block; }
   color: var(--text);
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   animation: fade-up 0.6s ease both;
+  align-self: start;
 }
 
 .painel-card:nth-child(2) { animation-delay: 0.06s; }
@@ -695,9 +706,11 @@ img { max-width: 100%; display: block; }
   position: relative;
   z-index: 1;
   max-width: 640px;
-  margin: 50px auto 110px;
+  margin: 50px auto 60px;
   padding: 0 24px;
   animation: fade-up 0.6s ease both;
+  width: 100%;
+  flex: 1;
 }
 
 .detail-card {
@@ -747,12 +760,14 @@ img { max-width: 100%; display: block; }
   position: relative;
   z-index: 1;
   max-width: 940px;
-  margin: 0 auto 110px;
+  margin: 0 auto 60px;
   padding: 0 24px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
   align-items: start;
+  width: 100%;
+  flex: 1;
 }
 
 .sim-card {
@@ -883,5 +898,5 @@ img { max-width: 100%; display: block; }
   .cta-ribbon { flex-direction: column; gap: 10px; text-align: center; }
   .form-row, .stat-grid { grid-template-columns: 1fr; }
   .choice-actions, .detail-actions { grid-template-columns: 1fr; }
-  .footer { padding: 30px 20px; flex-direction: column; text-align: center; }
+  .footer { padding: 16px 20px; flex-direction: column; text-align: center; }
 }
