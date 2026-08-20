@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simular carregamento · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  {% include 'partials/_navbar_logado.html' %}
+
+  <div class="painel-header">
+    <a href="/painel" class="back-link">← Voltar ao painel</a>
+    <h1>Simular carregamento</h1>
+    <p>Informe o nível atual da bateria e até quanto deseja carregar.</p>
+  </div>
+
+  <div class="detail-wrapper">
+
+    {% if not veiculo %}
+    <div class="detail-card" style="margin-bottom: 20px;">
+      <p class="footer-note" style="margin: 0;">
+        Você ainda não cadastrou um veículo. A simulação vai usar uma capacidade de
+        bateria padrão até que você cadastre o seu.
+        <a href="/cadastro-veiculo" style="color: var(--red-light);">Cadastrar veículo →</a>
+      </p>
+    </div>
+    {% endif %}
+
+    <div class="detail-card">
+      <h2>Dados da sessão</h2>
+      <p class="subtitle">Os valores são estimativas com base na potência do carregador e na tarifa vigente.</p>
+
+      <form id="form-carregamento">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="percentual-atual">Bateria atual (%)</label>
+            <input
+              type="number"
+              id="percentual-atual"
+              name="percentual_atual"
+              min="0"
+              max="100"
+              step="1"
+              value="{{ veiculo.percentual_atual|int if veiculo and veiculo.percentual_atual is not none else '' }}"
+              placeholder="Ex: 20"
+              required
+            >
+          </div>
+          <div class="form-group">
+            <label for="percentual-desejado">Carregar até (%)</label>
+            <input
+              type="number"
+              id="percentual-desejado"
+              name="percentual_desejado"
+              min="0"
+              max="100"
+              step="1"
+              placeholder="Ex: 80"
+              required
+            >
+          </div>
+        </div>
+
+        <div id="msg-erro" class="msg erro"></div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="btn-simular">
+          Simular carregamento
+        </button>
+      </form>
+    </div>
+
+    <div class="detail-card" id="card-resultado" style="display: none; margin-top: 20px;">
+      <h2>Resultado da simulação</h2>
+      <p class="subtitle">Estimativa para a sessão informada.</p>
+
+      <div class="detail-field">
+        <span class="field-label">Energia a ser fornecida</span>
+        <span class="field-value" id="res-energia">—</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Tempo estimado</span>
+        <span class="field-value" id="res-tempo">—</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Valor estimado</span>
+        <span class="field-value" id="res-valor">—</span>
+      </div>
+
+      <div class="detail-actions">
+        <button type="button" class="btn btn-outline" id="btn-nova-simulacao">Nova simulação</button>
+        <a href="/painel" class="btn btn-primary">Voltar ao painel</a>
+      </div>
+    </div>
+
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script>
+    const form = document.getElementById('form-carregamento');
+    const msgErro = document.getElementById('msg-erro');
+    const cardResultado = document.getElementById('card-resultado');
+    const btnSimular = document.getElementById('btn-simular');
+
+    function formatarTempo(horas, minutos) {
+      if (horas === 0) return `${minutos} min`;
+      if (minutos === 0) return `${horas} h`;
+      return `${horas} h ${minutos} min`;
+    }
+
+    function formatarMoeda(valor) {
+      return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      msgErro.style.display = 'none';
+      cardResultado.style.display = 'none';
+
+      const percentualAtual = document.getElementById('percentual-atual').value;
+      const percentualDesejado = document.getElementById('percentual-desejado').value;
+
+      btnSimular.disabled = true;
+      btnSimular.textContent = 'Calculando...';
+
+      try {
+        const resposta = await fetch('/api/carregamento/simular', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            percentual_atual: percentualAtual,
+            percentual_desejado: percentualDesejado,
+          }),
+        });
+
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+          msgErro.textContent = dados.erro || 'Não foi possível simular o carregamento.';
+          msgErro.style.display = 'block';
+          return;
+        }
+
+        document.getElementById('res-energia').textContent = `${dados.energia_kwh} kWh`;
+        document.getElementById('res-tempo').textContent = formatarTempo(dados.tempo_horas, dados.tempo_minutos);
+        document.getElementById('res-valor').textContent = formatarMoeda(dados.valor_estimado);
+
+        cardResultado.style.display = 'block';
+        cardResultado.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (erro) {
+        msgErro.textContent = 'Erro de conexão. Tente novamente.';
+        msgErro.style.display = 'block';
+      } finally {
+        btnSimular.disabled = false;
+        btnSimular.textContent = 'Simular carregamento';
+      }
+    });
+
+    document.getElementById('btn-nova-simulacao').addEventListener('click', () => {
+      cardResultado.style.display = 'none';
+      document.getElementById('percentual-desejado').value = '';
+      document.getElementById('percentual-desejado').focus();
+    });
+  </script>
+</body>
+</html>
