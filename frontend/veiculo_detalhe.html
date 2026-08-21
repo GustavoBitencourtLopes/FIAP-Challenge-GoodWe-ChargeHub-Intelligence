@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ veiculo.marca or 'Veículo' }} {{ veiculo.modelo or '' }} · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -14,7 +16,7 @@
   {% include 'partials/_navbar_logado.html' %}
 
   <div class="detail-wrapper">
-    <a href="/meus-veiculos" class="back-link">← Voltar aos meus carros</a>
+    <a href="/meus-veiculos" class="back-link"><span class="arrow-icon">←</span> Voltar aos meus carros</a>
 
     <div class="detail-card">
       <h2>{{ veiculo.marca or 'Marca não informada' }} {{ veiculo.modelo or '' }}</h2>
@@ -35,6 +37,11 @@
       <div class="detail-field">
         <span class="field-label">Ano</span>
         <span class="field-value">{{ veiculo.ano or '—' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="field-label">Capacidade da bateria</span>
+        <span class="field-value">{{ veiculo.capacidade_bateria_kwh and (veiculo.capacidade_bateria_kwh ~ ' kWh') or '—'
+          }}</span>
       </div>
 
       <div class="detail-actions">
@@ -73,4 +80,5 @@
     });
   </script>
 </body>
+
 </html>

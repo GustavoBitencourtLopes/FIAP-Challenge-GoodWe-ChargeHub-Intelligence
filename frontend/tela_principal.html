@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -22,15 +24,27 @@
       acompanhe estimativas de tempo, custo e recomendações geradas por IA.
     </p>
     <div class="actions">
+      {% if logado %}
+      <a href="/carregamento" class="btn btn-primary">Fazer carregamento</a>
+      <a href="/painel" class="btn btn-outline">Ir para o painel</a>
+      {% else %}
       <a href="/cadastro" class="btn btn-primary">Criar minha conta</a>
       <a href="/login" class="btn btn-outline">Já tenho conta</a>
+      {% endif %}
     </div>
   </section>
 
+  {% if logado %}
+  <a href="/painel" class="cta-ribbon">
+    <span>Ir para o seu painel</span>
+    <span class="arrow">→</span>
+  </a>
+  {% else %}
   <a href="/cadastro" class="cta-ribbon">
     <span>Comece agora e cadastre seu veículo</span>
     <span class="arrow">→</span>
   </a>
+  {% endif %}
 
   <section class="section-heading" id="como-funciona">
     <div class="eyebrow">Como funciona</div>
@@ -46,7 +60,7 @@
     <div class="step-card">
       <div class="step-number">02 · VEÍCULO</div>
       <h3>Cadastre seu veículo</h3>
-      <p>Informe marca, modelo, placa e ano em poucos cliques.</p>
+      <p>Informe marca, modelo, placa, ano e a capacidade da bateria.</p>
     </div>
     <div class="step-card">
       <div class="step-number">03 · SIMULAÇÃO</div>
@@ -60,4 +74,5 @@
 
   <script src="/static/js/main.js"></script>
 </body>
+
 </html>

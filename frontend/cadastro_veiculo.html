@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cadastrar Veículo · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -14,10 +16,11 @@
   {% include 'partials/_navbar_minima.html' %}
 
   <div class="auth-wrapper">
-    <div class="auth-card" style="max-width: 440px;">
+    <div class="auth-card" style="max-width: 460px;">
       <span class="badge-step">CONTA CRIADA COM SUCESSO</span>
       <h2>Quer cadastrar seu veículo agora?</h2>
-      <p class="subtitle">Guardamos apenas os dados básicos do carro. Detalhes de carregamento você informa depois, na hora de carregar.</p>
+      <p class="subtitle">A capacidade da bateria é usada para calcular tempo e custo de carregamento automaticamente.
+      </p>
 
       <form id="form-veiculo">
         <div class="form-row">
@@ -39,6 +42,10 @@
             <label for="ano">Ano</label>
             <input type="number" id="ano" name="ano" placeholder="Ex: 2024" min="1990" max="2030">
           </div>
+        </div>
+        <div class="form-group">
+          <label for="capacidade">Capacidade da bateria (kWh)</label>
+          <input type="number" id="capacidade" step="0.1" placeholder="Ex: 44.9">
         </div>
 
         <div class="choice-actions">
@@ -66,6 +73,7 @@
         marca: document.getElementById('marca').value,
         modelo: document.getElementById('modelo').value,
         ano: document.getElementById('ano').value,
+        capacidade_bateria_kwh: document.getElementById('capacidade').value,
       };
 
       try {
@@ -97,4 +105,5 @@
   </script>
 
 </body>
+
 </html>
