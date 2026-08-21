@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Editar Veículo · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -14,7 +16,7 @@
   {% include 'partials/_navbar_logado.html' %}
 
   <div class="auth-wrapper">
-    <div class="auth-card" style="max-width: 440px;">
+    <div class="auth-card" style="max-width: 460px;">
       <h2>Editar veículo</h2>
       <p class="subtitle">Atualize os dados do seu carro.</p>
 
@@ -38,6 +40,10 @@
             <label for="ano">Ano</label>
             <input type="number" id="ano" min="1990" max="2030" value="{{ veiculo.ano or '' }}">
           </div>
+        </div>
+        <div class="form-group">
+          <label for="capacidade">Capacidade da bateria (kWh)</label>
+          <input type="number" id="capacidade" step="0.1" value="{{ veiculo.capacidade_bateria_kwh or '' }}">
         </div>
 
         <div class="choice-actions">
@@ -64,6 +70,7 @@
         modelo: document.getElementById('modelo').value,
         placa: document.getElementById('placa').value,
         ano: document.getElementById('ano').value,
+        capacidade_bateria_kwh: document.getElementById('capacidade').value,
       };
 
       try {
@@ -91,4 +98,5 @@
   </script>
 
 </body>
+
 </html>

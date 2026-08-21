@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fazer Carregamento · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -14,56 +16,57 @@
   {% include 'partials/_navbar_logado.html' %}
 
   <section class="painel-header">
-    <a href="/painel" class="back-link">← Voltar ao painel</a>
+    <a href="/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
     <h1>Fazer carregamento</h1>
     <p>{{ veiculo.marca or 'Seu veículo' }} {{ veiculo.modelo or '' }} · Placa {{ veiculo.placa or '—' }}</p>
   </section>
 
+  {% if not capacidade_definida %}
+  <div class="detail-wrapper">
+    <div class="empty-state">
+      <h3>Complete o cadastro do seu veículo</h3>
+      <p>Precisamos saber a capacidade da bateria (kWh) do seu carro para calcular tempo e custo de carregamento.</p>
+      <br>
+      <a href="/veiculo/{{ veiculo.id }}/editar" class="btn btn-primary">Completar cadastro do veículo</a>
+    </div>
+  </div>
+  {% else %}
+
   <div class="sim-layout">
     <div class="sim-card">
       <h2>Sessão de recarga</h2>
-      <p class="subtitle">Informe os dados abaixo para simular tempo, custo e disponibilidade.</p>
+      <p class="subtitle">Informe o percentual atual e o percentual desejado. O resto o sistema calcula pra você.</p>
 
       <form id="form-carregamento">
         <div class="form-group">
           <label for="percentual_atual">Percentual atual da bateria (%)</label>
           <input type="number" id="percentual_atual" min="0" max="100" step="1"
-                 value="{{ veiculo.percentual_atual or '' }}" required>
+            value="{{ veiculo.percentual_atual or '' }}" required>
         </div>
         <div class="form-group">
-          <label for="percentual_desejado">Percentual desejado (%)</label>
+          <label for="percentual_desejado">Até quantos % você quer carregar?</label>
           <input type="number" id="percentual_desejado" min="1" max="100" step="1" placeholder="Ex: 80" required>
         </div>
-        <div class="form-group">
-          <label for="capacidade_bateria_kwh">Capacidade da bateria (kWh)</label>
-          <input type="number" id="capacidade_bateria_kwh" min="1" step="0.1"
-                 value="{{ veiculo.capacidade_bateria_kwh or '' }}" placeholder="Ex: 44.9" required>
-        </div>
-        <div class="form-group">
-          <label for="horario">Horário</label>
-          <select id="horario">
-            <option value="normal">Normal</option>
-            <option value="pico">Horário de pico</option>
-          </select>
-        </div>
 
-        <button type="submit" class="btn btn-primary btn-full" id="btn-iniciar">Iniciar sessão de carregamento</button>
+        <button type="submit" class="btn btn-primary btn-full" id="btn-iniciar">Ver disponibilidade e preço</button>
         <div id="mensagem" class="msg"></div>
       </form>
     </div>
 
     <div class="sim-card" id="painel-resultado">
       <h2>Resultado da sessão</h2>
-      <p class="subtitle">Os dados aparecem aqui assim que você iniciar a simulação.</p>
+      <p class="subtitle">Os dados aparecem aqui assim que você consultar a simulação.</p>
 
       <div class="result-empty" id="resultado-vazio">
         <div class="icon">⚡</div>
-        <p>Preencha o formulário ao lado e clique em "Iniciar sessão" para ver a estimativa de tempo, custo e disponibilidade dos carregadores.</p>
+        <p>Preencha o formulário ao lado para ver a lotação do outlet, tempo estimado e preço do carregamento.</p>
       </div>
 
       <div id="resultado-conteudo" style="display: none;"></div>
     </div>
   </div>
+
+  {% endif %}
 
   {% include 'partials/_footer.html' %}
   {% include 'partials/_back_to_top.html' %}
@@ -71,92 +74,164 @@
   <script src="/static/js/main.js"></script>
   <script>
     const form = document.getElementById('form-carregamento');
-    const mensagem = document.getElementById('mensagem');
-    const btnIniciar = document.getElementById('btn-iniciar');
-    const resultadoVazio = document.getElementById('resultado-vazio');
-    const resultadoConteudo = document.getElementById('resultado-conteudo');
+    if (form) {
+      const mensagem = document.getElementById('mensagem');
+      const btnIniciar = document.getElementById('btn-iniciar');
+      const resultadoVazio = document.getElementById('resultado-vazio');
+      const resultadoConteudo = document.getElementById('resultado-conteudo');
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      mensagem.className = 'msg';
-      btnIniciar.disabled = true;
-      btnIniciar.textContent = 'Simulando...';
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        mensagem.className = 'msg';
+        btnIniciar.disabled = true;
+        btnIniciar.textContent = 'Consultando...';
 
-      const dados = {
-        percentual_atual: document.getElementById('percentual_atual').value,
-        percentual_desejado: document.getElementById('percentual_desejado').value,
-        capacidade_bateria_kwh: document.getElementById('capacidade_bateria_kwh').value,
-        horario: document.getElementById('horario').value,
-      };
+        const dados = {
+          percentual_atual: document.getElementById('percentual_atual').value,
+          percentual_desejado: document.getElementById('percentual_desejado').value,
+        };
 
-      try {
-        const resposta = await fetch('/api/carregamento', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dados),
-        });
-        const r = await resposta.json();
+        try {
+          const resposta = await fetch('/api/carregamento', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados),
+          });
+          const r = await resposta.json();
 
-        if (!resposta.ok) {
-          mensagem.textContent = r.erro || 'Não foi possível simular o carregamento.';
+          if (!resposta.ok) {
+            mensagem.textContent = r.erro || 'Não foi possível simular o carregamento.';
+            mensagem.className = 'msg erro';
+            return;
+          }
+
+          // Barra de status dos postos: verde = disponível, dourado = manutenção, vermelho = ocupado
+          let barraPostos = r.status_postos
+            .map(s => `<div class="charger-dot ${s === 'disponivel' ? 'disponivel' : 'ocupado'}"></div>`)
+            .join('');
+          for (let i = 0; i < r.postos_em_manutencao; i++) {
+            barraPostos += `<div class="charger-dot manutencao"></div>`;
+          }
+
+          const tarifaPicoLinha = r.horario_pico
+            ? `<div class="price-row pico">
+                 <span class="price-label">Taxa de horário de pico</span>
+                 <span class="price-value">+ R$ ${r.taxa_pico_kwh.toFixed(2)}/kWh</span>
+               </div>`
+            : '';
+
+          const descontoLinha = r.desconto > 0
+            ? `<div class="price-row desconto">
+                 <span class="price-label">Desconto (baixa demanda)</span>
+                 <span class="price-value">- R$ ${r.desconto.toFixed(2)}</span>
+               </div>`
+            : '';
+
+          resultadoConteudo.innerHTML = `
+            <span class="demand-badge ${r.lotacao_classe}">Outlet: ${r.lotacao_label}${r.horario_pico ? ' · Horário de pico' : ''}</span>
+
+            <p class="subtitle" style="margin-top:-6px;">
+              ${r.postos_operacionais} de ${r.postos_total} postos funcionando
+              ${r.postos_em_manutencao > 0 ? `(${r.postos_em_manutencao} em manutenção)` : ''}
+            </p>
+            <div class="chargers-row">${barraPostos}</div>
+            <p class="subtitle" style="margin-top:-6px; margin-bottom:18px;">
+              ${r.postos_disponiveis} disponíveis · ${r.postos_ocupados} ocupados
+            </p>
+
+            <div class="info-box horario">🕐 ${r.sugestao_horario}</div>
+
+            <div class="stat-grid">
+              <div class="stat-box">
+                <div class="stat-label">Energia necessária</div>
+                <div class="stat-value">${r.energia_kwh} kWh</div>
+              </div>
+              <div class="stat-box highlight">
+                <div class="stat-label">Tempo total estimado</div>
+                <div class="stat-value">${r.tempo_total_min} min</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Tempo de carga</div>
+                <div class="stat-value">${r.tempo_carregamento_min} min</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Tempo de espera</div>
+                <div class="stat-value">${r.tempo_espera_min} min</div>
+              </div>
+            </div>
+
+            <div class="price-breakdown">
+              <div class="price-row">
+                <span class="price-label">Tarifa base</span>
+                <span class="price-value">R$ ${r.tarifa_base_kwh.toFixed(2)}/kWh</span>
+              </div>
+              ${tarifaPicoLinha}
+              <div class="price-row">
+                <span class="price-label">Valor total</span>
+                <span class="price-value">R$ ${r.valor_total.toFixed(2)}</span>
+              </div>
+              ${descontoLinha}
+              <div class="price-row total">
+                <span class="price-label">Valor final</span>
+                <span class="price-value">R$ ${r.valor_final.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div class="info-box recomendacao">💡 ${r.recomendacao}</div>
+            <div class="info-box cupom">🎁 Enquanto espera: ${r.dica_cupom}</div>
+
+            <button class="btn btn-primary btn-full" id="btn-pagamento" data-sessao="${r.sessao_id}">
+              Ir para pagamento · R$ ${r.valor_final.toFixed(2)}
+            </button>
+            <div id="mensagem-pagamento" class="msg"></div>
+          `;
+
+          resultadoVazio.style.display = 'none';
+          resultadoConteudo.style.display = 'block';
+
+          document.getElementById('btn-pagamento').addEventListener('click', async (ev) => {
+            const botao = ev.currentTarget;
+            const sessaoId = botao.dataset.sessao;
+            const mensagemPagamento = document.getElementById('mensagem-pagamento');
+
+            botao.disabled = true;
+            botao.textContent = 'Processando pagamento...';
+
+            try {
+              const respostaPagamento = await fetch(`/api/carregamento/${sessaoId}/pagar`, { method: 'POST' });
+              const resultadoPagamento = await respostaPagamento.json();
+
+              if (!respostaPagamento.ok) {
+                mensagemPagamento.textContent = resultadoPagamento.erro || 'Não foi possível confirmar o pagamento.';
+                mensagemPagamento.className = 'msg erro';
+                botao.disabled = false;
+                botao.textContent = 'Ir para pagamento';
+                return;
+              }
+
+              botao.textContent = '✓ Pagamento confirmado';
+              botao.classList.remove('btn-primary');
+              botao.classList.add('btn-success');
+              mensagemPagamento.textContent = resultadoPagamento.mensagem;
+              mensagemPagamento.className = 'msg sucesso';
+            } catch (err) {
+              mensagemPagamento.textContent = 'Erro de conexão com o servidor.';
+              mensagemPagamento.className = 'msg erro';
+              botao.disabled = false;
+              botao.textContent = 'Ir para pagamento';
+            }
+          });
+
+        } catch (err) {
+          mensagem.textContent = 'Erro de conexão com o servidor.';
           mensagem.className = 'msg erro';
-          return;
+        } finally {
+          btnIniciar.disabled = false;
+          btnIniciar.textContent = 'Ver disponibilidade e preço';
         }
-
-        // Monta a barra de carregadores (verde = disponível, vermelho = ocupado/carregando)
-        const barraCarregadores = r.status_carregadores
-          .map(s => `<div class="charger-dot ${s === 'disponivel' ? 'disponivel' : 'ocupado'}"></div>`)
-          .join('');
-
-        resultadoConteudo.innerHTML = `
-          <span class="demand-badge ${r.nivel_demanda_classe}">Demanda ${r.nivel_demanda}</span>
-
-          <div class="chargers-row">${barraCarregadores}</div>
-          <p class="subtitle" style="margin-top:-10px; margin-bottom:20px;">
-            ${r.carregadores_disponiveis} disponíveis · ${r.carregadores_ocupados} ocupados
-          </p>
-
-          <div class="stat-grid">
-            <div class="stat-box">
-              <div class="stat-label">Energia necessária</div>
-              <div class="stat-value">${r.energia_kwh} kWh</div>
-            </div>
-            <div class="stat-box highlight">
-              <div class="stat-label">Tempo total estimado</div>
-              <div class="stat-value">${r.tempo_total_min} min</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Tempo de espera</div>
-              <div class="stat-value">${r.tempo_espera_min} min</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Tarifa aplicada</div>
-              <div class="stat-value">R$ ${r.tarifa_kwh.toFixed(2)}/kWh</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Valor total</div>
-              <div class="stat-value">R$ ${r.valor_total.toFixed(2)}</div>
-            </div>
-            <div class="stat-box highlight">
-              <div class="stat-label">Valor final ${r.desconto > 0 ? '(com desconto)' : ''}</div>
-              <div class="stat-value">R$ ${r.valor_final.toFixed(2)}</div>
-            </div>
-          </div>
-
-          <div class="recommendation-box">💡 ${r.recomendacao}</div>
-        `;
-
-        resultadoVazio.style.display = 'none';
-        resultadoConteudo.style.display = 'block';
-
-      } catch (err) {
-        mensagem.textContent = 'Erro de conexão com o servidor.';
-        mensagem.className = 'msg erro';
-      } finally {
-        btnIniciar.disabled = false;
-        btnIniciar.textContent = 'Iniciar sessão de carregamento';
-      }
-    });
+      });
+    }
   </script>
 </body>
+
 </html>

@@ -6,14 +6,23 @@ Backend do ChargeGrid Intelligence.
 Fluxo de onboarding:
 1. /cadastro         -> cria a conta (nome, email, senha) e já loga o usuário.
 2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
+   Aqui já pedimos a capacidade da bateria (kWh), usada depois no cálculo
+   de tempo/custo do carregamento.
 3. /painel           -> as 4 áreas do sistema.
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
-5. /carregamento     -> simulação de uma sessão de carregamento.
+5. /carregamento     -> simulação inteligente de uma sessão de carregamento.
 6. /minha-conta      -> visualizar dados da conta e trocar senha.
 
-A tela inicial ("/") é pública, mas verifica se existe uma sessão ativa para
-trocar os botões "Entrar / Criar conta" por "Ir para o painel" (ver rota
-tela_principal abaixo).
+SISTEMA INTELIGENTE (simulado, sem custo de API):
+A "IA" aqui é baseada em regras, não em um modelo generativo — e isso é
+proposital (ver seção 13 do briefing do desafio: priorizar soluções
+gratuitas). Ela decide:
+- se é horário de pico (com base no horário real do relógio);
+- a lotação do outlet (quantos carregadores estão ocupados/disponíveis,
+  com chance de 1 estar em manutenção, para parecer mais realista);
+- uma sugestão de horário dinâmica;
+- uma dica de cupom/cashback;
+- o preço final, com uma taxa extra em horário de pico.
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
@@ -30,12 +39,20 @@ a cada novo deploy (plano gratuito do Render), é possível que o navegador
 de alguém ainda tenha um cookie de sessão apontando para um usuário que
 não existe mais no banco novo. Por isso, `login_required` verifica se o
 usuário realmente existe no banco (não só se o id está na sessão).
+
+NOTA SOBRE FUSO HORÁRIO: o horário de pico é calculado usando o fuso de
+São Paulo (America/Sao_Paulo). Em algumas máquinas Windows, o Python não
+tem o banco de dados de fusos horários (IANA) instalado por padrão — por
+isso o pacote "tzdata" está no requirements.txt. Caso, mesmo assim, ele
+não esteja disponível em algum computador do grupo, o código abaixo cai
+automaticamente para o horário local do sistema em vez de quebrar.
 """
 
 import os
 import random
 from datetime import datetime
 from functools import wraps
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -113,15 +130,19 @@ class SessaoCarregamento(db.Model):
     tempo_espera_min = db.Column(db.Float)
     tempo_total_min = db.Column(db.Float)
 
-    nivel_demanda = db.Column(db.String(20))
-    carregadores_disponiveis = db.Column(db.Integer)
-    carregadores_ocupados = db.Column(db.Integer)
+    nivel_lotacao = db.Column(db.String(20))
+    postos_operacionais = db.Column(db.Integer)
+    postos_disponiveis = db.Column(db.Integer)
+    postos_ocupados = db.Column(db.Integer)
+    horario_pico = db.Column(db.Boolean, default=False)
 
-    tarifa_kwh = db.Column(db.Float)
+    tarifa_base_kwh = db.Column(db.Float)
+    taxa_pico_kwh = db.Column(db.Float)
     valor_total = db.Column(db.Float)
     desconto = db.Column(db.Float)
     valor_final = db.Column(db.Float)
 
+    pago = db.Column(db.Boolean, default=False)
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -166,8 +187,6 @@ def veiculo_do_usuario_ou_404(veiculo_id):
 
 @app.route("/")
 def tela_principal():
-    # A tela inicial é pública, mas verificamos se existe uma sessão válida
-    # para trocar os botões "Entrar / Criar conta" por "Ir para o painel".
     logado = usuario_atual() is not None
     return render_template("tela_principal.html", logado=logado)
 
@@ -232,9 +251,17 @@ def veiculo_editar_pagina(veiculo_id):
 @login_required
 def pagina_carregamento():
     usuario = usuario_atual()
-    if usuario.veiculo is None:
+    veiculo = usuario.veiculo
+
+    if veiculo is None:
         return redirect(url_for("pagina_cadastro_veiculo"))
-    return render_template("carregamento.html", veiculo=usuario.veiculo)
+
+    capacidade_definida = veiculo.capacidade_bateria_kwh is not None
+    return render_template(
+        "carregamento.html",
+        veiculo=veiculo,
+        capacidade_definida=capacidade_definida,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +317,7 @@ def api_veiculo_criar():
     veiculo.marca = (dados.get("marca") or "").strip() or None
     veiculo.modelo = (dados.get("modelo") or "").strip() or None
     veiculo.ano = _numero_ou_none(dados.get("ano"), int)
+    veiculo.capacidade_bateria_kwh = _numero_ou_none(dados.get("capacidade_bateria_kwh"))
 
     db.session.add(veiculo)
     db.session.commit()
@@ -310,6 +338,7 @@ def api_veiculo_atualizar(veiculo_id):
     veiculo.marca = (dados.get("marca") or "").strip() or None
     veiculo.modelo = (dados.get("modelo") or "").strip() or None
     veiculo.ano = _numero_ou_none(dados.get("ano"), int)
+    veiculo.capacidade_bateria_kwh = _numero_ou_none(dados.get("capacidade_bateria_kwh"))
 
     db.session.commit()
 
@@ -334,35 +363,67 @@ def api_veiculo_excluir(veiculo_id):
 
 
 # ---------------------------------------------------------------------------
-# API - SIMULAÇÃO DE CARREGAMENTO
+# "IA" — SISTEMA INTELIGENTE DE CARREGAMENTO (baseado em regras)
 # ---------------------------------------------------------------------------
 
 TOTAL_CARREGADORES = 4
-POTENCIA_CARREGADOR_KW = 7.0
+POTENCIA_CARREGADOR_KW = 7.0  # mesma potência do GW7K-HCA-20 (linha HCA G2 da GoodWe)
+
+# Horários de pico considerados para o outlet comercial (fuso de São Paulo).
+HORARIOS_PICO = [(8, 10), (18, 21)]
 
 TARIFAS_POR_KWH = {"baixa": 0.79, "media": 0.99, "alta": 1.29}
 ESPERA_MINUTOS = {"baixa": 0, "media": 8, "alta": 18}
 DESCONTO_PERCENTUAL = {"baixa": 0.10, "media": 0.0, "alta": 0.0}
+TAXA_PICO_PERCENTUAL = 0.15  # +15% na tarifa em horário de pico
+
+LOTACAO_LABEL = {"baixa": "Tranquilo", "media": "Moderado", "alta": "Lotado"}
 
 RECOMENDACOES = {
-    "baixa": "Baixa demanda agora — ótimo momento para carregar, com tarifa reduzida e desconto aplicado.",
-    "media": "Demanda moderada no momento. Uma pequena espera pode ser necessária antes de iniciar.",
-    "alta": "Alta demanda agora. Se possível, considere carregar em outro horário para economizar e evitar espera.",
+    "baixa": "Poucos veículos no outlet agora — ótimo momento para carregar sem espera.",
+    "media": "Movimento moderado no outlet. Uma pequena espera pode ocorrer antes de iniciar.",
+    "alta": "O outlet está bastante cheio agora. Se puder, considere voltar em outro horário.",
 }
 
+CUPONS = [
+    "15% de desconto na Cafeteria do Outlet",
+    "Cashback de R$ 10 em qualquer loja parceira",
+    "Compre 1 e leve 2 na loja de conveniência",
+    "10% de desconto na praça de alimentação",
+    "Frete grátis em compras acima de R$ 100 na loja âncora",
+]
 
-def _simular_ocupacao(horario):
-    if horario == "pico":
-        pesos = [0.15, 0.35, 0.50]
-    else:
-        pesos = [0.55, 0.30, 0.15]
 
+def _agora_sao_paulo():
+    """Retorna o horário atual no fuso de São Paulo. Se o banco de fusos
+    horários (tzdata) não estiver disponível nesta máquina, usa o horário
+    local do sistema como alternativa segura, em vez de quebrar a rota."""
+    try:
+        return datetime.now(ZoneInfo("America/Sao_Paulo"))
+    except ZoneInfoNotFoundError:
+        return datetime.now()
+
+
+def _esta_em_horario_de_pico(agora=None):
+    agora = agora or _agora_sao_paulo()
+    hora = agora.hour
+    return any(inicio <= hora < fim for inicio, fim in HORARIOS_PICO)
+
+
+def _simular_postos(pico):
+    """Sorteia o status de cada posto de carregamento. Em horário de pico,
+    a chance de estar ocupado é maior. Há uma pequena chance de 1 posto
+    estar em manutenção, para parecer mais realista."""
+    em_manutencao = 1 if random.random() < 0.12 else 0
+    operacionais = TOTAL_CARREGADORES - em_manutencao
+
+    pesos = [0.15, 0.35, 0.50] if pico else [0.55, 0.30, 0.15]
     status_possiveis = ["disponivel", "carregando", "ocupado"]
-    sorteio = random.choices(status_possiveis, weights=pesos, k=TOTAL_CARREGADORES)
+    sorteio = random.choices(status_possiveis, weights=pesos, k=operacionais)
 
     disponiveis = sorteio.count("disponivel")
-    ocupados = TOTAL_CARREGADORES - disponiveis
-    taxa_ocupacao = ocupados / TOTAL_CARREGADORES
+    ocupados = operacionais - disponiveis
+    taxa_ocupacao = ocupados / operacionais if operacionais else 1
 
     if taxa_ocupacao <= 0.25:
         nivel = "baixa"
@@ -371,7 +432,24 @@ def _simular_ocupacao(horario):
     else:
         nivel = "alta"
 
-    return disponiveis, ocupados, nivel, sorteio
+    return {
+        "em_manutencao": em_manutencao,
+        "operacionais": operacionais,
+        "disponiveis": disponiveis,
+        "ocupados": ocupados,
+        "nivel": nivel,
+        "status_lista": sorteio,
+    }
+
+
+def _gerar_sugestao_horario(ocupados, nivel):
+    if ocupados == 0:
+        return "Não há espera no momento — você pode carregar agora mesmo."
+    if nivel == "baixa":
+        return "Poucos veículos aguardando. Você deve conseguir uma vaga rapidamente."
+    minutos = random.choice([15, 20, 25, 30, 40])
+    liberam = random.randint(1, ocupados)
+    return f"Daqui a {minutos} minutos, aproximadamente {liberam} posto(s) devem ficar livres."
 
 
 @app.route("/api/carregamento", methods=["POST"])
@@ -383,15 +461,18 @@ def api_carregamento_simular():
     if veiculo is None:
         return jsonify({"erro": "Cadastre um veículo antes de simular o carregamento."}), 400
 
+    if veiculo.capacidade_bateria_kwh is None:
+        return jsonify({
+            "erro": "Complete o cadastro do seu veículo com a capacidade da bateria antes de simular.",
+        }), 400
+
     dados = request.get_json(silent=True) or {}
 
     percentual_atual = _numero_ou_none(dados.get("percentual_atual"))
     percentual_desejado = _numero_ou_none(dados.get("percentual_desejado"))
-    capacidade_kwh = _numero_ou_none(dados.get("capacidade_bateria_kwh"))
-    horario = dados.get("horario") or "normal"
 
-    if percentual_atual is None or percentual_desejado is None or capacidade_kwh is None:
-        return jsonify({"erro": "Preencha percentual atual, percentual desejado e capacidade da bateria."}), 400
+    if percentual_atual is None or percentual_desejado is None:
+        return jsonify({"erro": "Preencha o percentual atual e o percentual desejado."}), 400
 
     if not (0 <= percentual_atual <= 100) or not (0 <= percentual_desejado <= 100):
         return jsonify({"erro": "Percentuais devem estar entre 0 e 100."}), 400
@@ -399,19 +480,24 @@ def api_carregamento_simular():
     if percentual_desejado <= percentual_atual:
         return jsonify({"erro": "O percentual desejado deve ser maior que o atual."}), 400
 
-    disponiveis, ocupados, nivel, status_carregadores = _simular_ocupacao(horario)
+    capacidade_kwh = veiculo.capacidade_bateria_kwh
+    pico = _esta_em_horario_de_pico()
+    postos = _simular_postos(pico)
+    nivel = postos["nivel"]
 
     energia_kwh = capacidade_kwh * (percentual_desejado - percentual_atual) / 100
     tempo_carregamento_min = (energia_kwh / POTENCIA_CARREGADOR_KW) * 60
     tempo_espera_min = ESPERA_MINUTOS[nivel]
     tempo_total_min = tempo_carregamento_min + tempo_espera_min
 
-    tarifa_kwh = TARIFAS_POR_KWH[nivel]
-    valor_total = energia_kwh * tarifa_kwh
+    tarifa_base = TARIFAS_POR_KWH[nivel]
+    taxa_pico_kwh = tarifa_base * TAXA_PICO_PERCENTUAL if pico else 0.0
+    tarifa_final_kwh = tarifa_base + taxa_pico_kwh
+
+    valor_total = energia_kwh * tarifa_final_kwh
     desconto = valor_total * DESCONTO_PERCENTUAL[nivel]
     valor_final = valor_total - desconto
 
-    veiculo.capacidade_bateria_kwh = capacidade_kwh
     veiculo.percentual_atual = percentual_desejado
 
     sessao = SessaoCarregamento(
@@ -423,10 +509,13 @@ def api_carregamento_simular():
         tempo_carregamento_min=round(tempo_carregamento_min, 1),
         tempo_espera_min=tempo_espera_min,
         tempo_total_min=round(tempo_total_min, 1),
-        nivel_demanda=nivel,
-        carregadores_disponiveis=disponiveis,
-        carregadores_ocupados=ocupados,
-        tarifa_kwh=tarifa_kwh,
+        nivel_lotacao=nivel,
+        postos_operacionais=postos["operacionais"],
+        postos_disponiveis=postos["disponiveis"],
+        postos_ocupados=postos["ocupados"],
+        horario_pico=pico,
+        tarifa_base_kwh=tarifa_base,
+        taxa_pico_kwh=round(taxa_pico_kwh, 4),
         valor_total=round(valor_total, 2),
         desconto=round(desconto, 2),
         valor_final=round(valor_final, 2),
@@ -434,24 +523,52 @@ def api_carregamento_simular():
     db.session.add(sessao)
     db.session.commit()
 
-    nivel_label = {"baixa": "Baixa", "media": "Média", "alta": "Alta"}[nivel]
+    recomendacao = RECOMENDACOES[nivel]
+    if pico:
+        recomendacao += " Como é horário de pico, uma taxa adicional foi aplicada à tarifa."
 
     return jsonify({
-        "nivel_demanda": nivel_label,
-        "nivel_demanda_classe": nivel,
-        "carregadores_disponiveis": disponiveis,
-        "carregadores_ocupados": ocupados,
-        "status_carregadores": status_carregadores,
+        "sessao_id": sessao.id,
+
+        "lotacao_label": LOTACAO_LABEL[nivel],
+        "lotacao_classe": nivel,
+        "horario_pico": pico,
+
+        "postos_total": TOTAL_CARREGADORES,
+        "postos_operacionais": postos["operacionais"],
+        "postos_em_manutencao": postos["em_manutencao"],
+        "postos_disponiveis": postos["disponiveis"],
+        "postos_ocupados": postos["ocupados"],
+        "status_postos": postos["status_lista"],
+
         "energia_kwh": round(energia_kwh, 2),
         "tempo_carregamento_min": round(tempo_carregamento_min, 1),
         "tempo_espera_min": tempo_espera_min,
         "tempo_total_min": round(tempo_total_min, 1),
-        "tarifa_kwh": tarifa_kwh,
+
+        "tarifa_base_kwh": tarifa_base,
+        "taxa_pico_kwh": round(taxa_pico_kwh, 4),
         "valor_total": round(valor_total, 2),
         "desconto": round(desconto, 2),
         "valor_final": round(valor_final, 2),
-        "recomendacao": RECOMENDACOES[nivel],
+
+        "recomendacao": recomendacao,
+        "sugestao_horario": _gerar_sugestao_horario(postos["ocupados"], nivel),
+        "dica_cupom": random.choice(CUPONS),
     })
+
+
+@app.route("/api/carregamento/<int:sessao_id>/pagar", methods=["POST"])
+@login_required
+def api_carregamento_pagar(sessao_id):
+    sessao = SessaoCarregamento.query.get_or_404(sessao_id)
+    if sessao.usuario_id != session.get("usuario_id"):
+        abort(403)
+
+    sessao.pago = True
+    db.session.commit()
+
+    return jsonify({"mensagem": "Pagamento simulado com sucesso! Sua sessão de carregamento foi confirmada."})
 
 
 # ---------------------------------------------------------------------------
