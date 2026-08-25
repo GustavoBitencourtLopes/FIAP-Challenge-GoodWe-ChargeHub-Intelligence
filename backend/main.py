@@ -6,23 +6,23 @@ Backend do ChargeGrid Intelligence.
 Fluxo de onboarding:
 1. /cadastro         -> cria a conta (nome, email, senha) e já loga o usuário.
 2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
-   Aqui já pedimos a capacidade da bateria (kWh), usada depois no cálculo
-   de tempo/custo do carregamento.
-3. /painel           -> as 4 áreas do sistema.
+3. /painel           -> as áreas do sistema.
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
-5. /carregamento     -> simulação inteligente de uma sessão de carregamento.
+5. /carregamento     -> simulação inteligente de uma sessão de carregamento,
+   com pagamento simulado (escolha de forma de pagamento).
 6. /minha-conta      -> visualizar dados da conta e trocar senha.
+7. /historico        -> histórico de sessões de carregamento do usuário.
 
-SISTEMA INTELIGENTE (simulado, sem custo de API):
-A "IA" aqui é baseada em regras, não em um modelo generativo — e isso é
-proposital (ver seção 13 do briefing do desafio: priorizar soluções
-gratuitas). Ela decide:
-- se é horário de pico (com base no horário real do relógio);
-- a lotação do outlet (quantos carregadores estão ocupados/disponíveis,
-  com chance de 1 estar em manutenção, para parecer mais realista);
-- uma sugestão de horário dinâmica;
-- uma dica de cupom/cashback;
-- o preço final, com uma taxa extra em horário de pico.
+SISTEMA INTELIGENTE (regras, sem custo de API):
+Decide se é horário de pico, a lotação do outlet, sugestões de horário,
+dicas de cupom e o preço final (com taxa extra em horário de pico).
+
+CHATBOT (IA generativa real, via API da Anthropic):
+Diferente do sistema de regras acima, o assistente de chat (/api/chat) usa
+de fato o modelo Claude Haiku 4.5 para responder perguntas livres do
+usuário. Isso tem um custo real, porém muito baixo (Haiku é o modelo mais
+barato da Anthropic). A chave de API fica em uma variável de ambiente
+(ANTHROPIC_API_KEY), nunca no código-fonte.
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
@@ -32,31 +32,33 @@ IMPORTANTE PARA DEPLOY (Render/produção):
 Em produção, quem roda esta aplicação é o gunicorn, que apenas IMPORTA
 este arquivo e usa a variável `app` — o bloco `if __name__ == "__main__"`
 não é executado. Por isso, a criação das tabelas (`db.create_all()`)
-acontece logo abaixo, fora desse bloco.
-
-NOTA SOBRE SESSÕES "FANTASMA": como o banco SQLite em produção é apagado
-a cada novo deploy (plano gratuito do Render), é possível que o navegador
-de alguém ainda tenha um cookie de sessão apontando para um usuário que
-não existe mais no banco novo. Por isso, `login_required` verifica se o
-usuário realmente existe no banco (não só se o id está na sessão).
+acontece logo abaixo, fora desse bloco. A variável ANTHROPIC_API_KEY
+precisa ser configurada nas variáveis de ambiente do Render também
+(Settings -> Environment), não só no .env local.
 
 NOTA SOBRE FUSO HORÁRIO: o horário de pico é calculado usando o fuso de
-São Paulo (America/Sao_Paulo). Em algumas máquinas Windows, o Python não
-tem o banco de dados de fusos horários (IANA) instalado por padrão — por
-isso o pacote "tzdata" está no requirements.txt. Caso, mesmo assim, ele
-não esteja disponível em algum computador do grupo, o código abaixo cai
-automaticamente para o horário local do sistema em vez de quebrar.
+São Paulo. Em algumas máquinas Windows, o Python não tem o banco de dados
+de fusos horários (IANA) instalado por padrão — por isso o pacote
+"tzdata" está no requirements.txt, com um fallback de segurança no código.
 """
 
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+
+load_dotenv()  # lê o arquivo .env local, se existir (não afeta produção no Render)
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
@@ -73,6 +75,11 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "c
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+anthropic_client = None
+if anthropic is not None and ANTHROPIC_API_KEY:
+    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +150,9 @@ class SessaoCarregamento(db.Model):
     valor_final = db.Column(db.Float)
 
     pago = db.Column(db.Boolean, default=False)
+    forma_pagamento = db.Column(db.String(30))
+    pago_em = db.Column(db.DateTime)
+
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -264,6 +274,51 @@ def pagina_carregamento():
     )
 
 
+FORMA_PAGAMENTO_LABEL = {
+    "cartao_credito": "Cartão de Crédito",
+    "cartao_debito": "Cartão de Débito",
+    "pix": "Pix",
+    "carteira_digital": "Carteira Digital",
+}
+
+
+def _formatar_data_br(dt_utc):
+    if dt_utc is None:
+        return "—"
+    try:
+        dt_com_tz = dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo"))
+    except ZoneInfoNotFoundError:
+        dt_com_tz = dt_utc
+    return dt_com_tz.strftime("%d/%m/%Y às %H:%M")
+
+
+@app.route("/historico")
+@login_required
+def historico():
+    usuario = usuario_atual()
+    sessoes_db = (
+        SessaoCarregamento.query
+        .filter_by(usuario_id=usuario.id)
+        .order_by(SessaoCarregamento.criado_em.desc())
+        .all()
+    )
+
+    sessoes = [
+        {
+            "data": _formatar_data_br(s.criado_em),
+            "percentual_inicial": s.percentual_inicial,
+            "percentual_final": s.percentual_final,
+            "energia_kwh": s.energia_kwh,
+            "valor_final": s.valor_final,
+            "pago": s.pago,
+            "forma_pagamento": FORMA_PAGAMENTO_LABEL.get(s.forma_pagamento, "—"),
+        }
+        for s in sessoes_db
+    ]
+
+    return render_template("historico.html", sessoes=sessoes)
+
+
 # ---------------------------------------------------------------------------
 # API - CADASTRO DE CONTA
 # ---------------------------------------------------------------------------
@@ -369,13 +424,12 @@ def api_veiculo_excluir(veiculo_id):
 TOTAL_CARREGADORES = 4
 POTENCIA_CARREGADOR_KW = 7.0  # mesma potência do GW7K-HCA-20 (linha HCA G2 da GoodWe)
 
-# Horários de pico considerados para o outlet comercial (fuso de São Paulo).
-HORARIOS_PICO = [(8, 10), (18, 21)]
+HORARIOS_PICO = [(8, 10), (18, 21)]  # fuso de São Paulo
 
 TARIFAS_POR_KWH = {"baixa": 0.79, "media": 0.99, "alta": 1.29}
 ESPERA_MINUTOS = {"baixa": 0, "media": 8, "alta": 18}
 DESCONTO_PERCENTUAL = {"baixa": 0.10, "media": 0.0, "alta": 0.0}
-TAXA_PICO_PERCENTUAL = 0.15  # +15% na tarifa em horário de pico
+TAXA_PICO_PERCENTUAL = 0.15
 
 LOTACAO_LABEL = {"baixa": "Tranquilo", "media": "Moderado", "alta": "Lotado"}
 
@@ -393,11 +447,10 @@ CUPONS = [
     "Frete grátis em compras acima de R$ 100 na loja âncora",
 ]
 
+FORMAS_PAGAMENTO_VALIDAS = set(FORMA_PAGAMENTO_LABEL.keys())
+
 
 def _agora_sao_paulo():
-    """Retorna o horário atual no fuso de São Paulo. Se o banco de fusos
-    horários (tzdata) não estiver disponível nesta máquina, usa o horário
-    local do sistema como alternativa segura, em vez de quebrar a rota."""
     try:
         return datetime.now(ZoneInfo("America/Sao_Paulo"))
     except ZoneInfoNotFoundError:
@@ -411,9 +464,6 @@ def _esta_em_horario_de_pico(agora=None):
 
 
 def _simular_postos(pico):
-    """Sorteia o status de cada posto de carregamento. Em horário de pico,
-    a chance de estar ocupado é maior. Há uma pequena chance de 1 posto
-    estar em manutenção, para parecer mais realista."""
     em_manutencao = 1 if random.random() < 0.12 else 0
     operacionais = TOTAL_CARREGADORES - em_manutencao
 
@@ -498,7 +548,9 @@ def api_carregamento_simular():
     desconto = valor_total * DESCONTO_PERCENTUAL[nivel]
     valor_final = valor_total - desconto
 
-    veiculo.percentual_atual = percentual_desejado
+    # NOTA: não persistimos mais o percentual_atual do veículo aqui — cada
+    # simulação começa do zero, o usuário informa livremente o ponto de
+    # partida da bateria a cada nova sessão.
 
     sessao = SessaoCarregamento(
         usuario_id=usuario.id,
@@ -565,10 +617,77 @@ def api_carregamento_pagar(sessao_id):
     if sessao.usuario_id != session.get("usuario_id"):
         abort(403)
 
+    dados = request.get_json(silent=True) or {}
+    forma_pagamento = dados.get("forma_pagamento")
+
+    if forma_pagamento not in FORMAS_PAGAMENTO_VALIDAS:
+        return jsonify({"erro": "Selecione uma forma de pagamento válida."}), 400
+
     sessao.pago = True
+    sessao.forma_pagamento = forma_pagamento
+    sessao.pago_em = datetime.utcnow()
     db.session.commit()
 
-    return jsonify({"mensagem": "Pagamento simulado com sucesso! Sua sessão de carregamento foi confirmada."})
+    return jsonify({
+        "mensagem": "Pagamento aprovado com sucesso!",
+        "forma_pagamento_label": FORMA_PAGAMENTO_LABEL[forma_pagamento],
+    })
+
+
+# ---------------------------------------------------------------------------
+# API - CHATBOT (IA generativa real, via Anthropic)
+# ---------------------------------------------------------------------------
+
+CHAT_MODELO = "claude-haiku-4-5-20251001"  # modelo mais barato da Anthropic
+
+CHAT_SYSTEM_PROMPT = """Você é o assistente virtual do ChargeGrid Intelligence, uma plataforma que
+simula uma rede de carregadores de veículos elétricos em outlets comerciais (projeto do FIAP EV
+Challenge 2026, em parceria com a GoodWe).
+
+Ajude o usuário com:
+- dúvidas sobre como funciona o carregamento do veículo elétrico dele;
+- recomendações gerais sobre horários de menor demanda no outlet;
+- dúvidas sobre a plataforma (cadastro de veículo, histórico de sessões, pagamento simulado);
+- curiosidades gerais sobre carros elétricos e recarga.
+
+Seja breve, direto e simpático. Respostas de no máximo 3 a 4 frases. Se não souber algo específico
+sobre a sessão atual do usuário, seja honesto e sugira que ele confira a tela de "Fazer carregamento"
+ou o "Histórico" no painel."""
+
+
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def api_chat():
+    if anthropic_client is None:
+        return jsonify({
+            "erro": "O assistente ainda não foi configurado. Peça para o administrador definir a ANTHROPIC_API_KEY.",
+        }), 503
+
+    dados = request.get_json(silent=True) or {}
+    mensagens = dados.get("mensagens") or []
+
+    if not mensagens:
+        return jsonify({"erro": "Envie uma mensagem."}), 400
+
+    usuario = usuario_atual()
+    contexto_pessoal = f" O usuário logado se chama {usuario.nome}."
+    if usuario.veiculo:
+        marca = usuario.veiculo.marca or ""
+        modelo = usuario.veiculo.modelo or ""
+        if marca or modelo:
+            contexto_pessoal += f" O veículo cadastrado dele é um {marca} {modelo}.".strip()
+
+    try:
+        resposta = anthropic_client.messages.create(
+            model=CHAT_MODELO,
+            max_tokens=300,
+            system=CHAT_SYSTEM_PROMPT + contexto_pessoal,
+            messages=mensagens[-10:],  # limita o histórico enviado, controla custo
+        )
+        texto_resposta = resposta.content[0].text
+        return jsonify({"resposta": texto_resposta})
+    except Exception:
+        return jsonify({"erro": "Não foi possível falar com o assistente agora. Tente novamente em instantes."}), 502
 
 
 # ---------------------------------------------------------------------------

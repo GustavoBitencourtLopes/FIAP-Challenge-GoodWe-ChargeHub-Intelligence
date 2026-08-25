@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    {% include 'partials/_navbar_logado.html' %}
+
+    <section class="painel-header">
+        <a href="/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+        <h1>Histórico de carregamentos</h1>
+        <p>Todas as suas sessões de recarga, do mais recente para o mais antigo.</p>
+    </section>
+
+    {% if sessoes %}
+    <div class="history-list">
+        {% for s in sessoes %}
+        <div class="history-card">
+            <div class="history-top">
+                <span class="history-date">{{ s.data }}</span>
+                {% if s.pago %}
+                <span class="pill-badge pago">Pago · {{ s.forma_pagamento }}</span>
+                {% else %}
+                <span class="pill-badge pendente">Não pago</span>
+                {% endif %}
+            </div>
+            <div class="history-body">
+                <div class="history-stat">
+                    <div class="stat-label">Carregamento</div>
+                    <div class="stat-value">{{ s.percentual_inicial|round|int }}% → {{ s.percentual_final|round|int }}%
+                    </div>
+                </div>
+                <div class="history-stat">
+                    <div class="stat-label">Energia</div>
+                    <div class="stat-value">{{ s.energia_kwh }} kWh</div>
+                </div>
+                <div class="history-stat">
+                    <div class="stat-label">Valor</div>
+                    <div class="stat-value">R$ {{ '%.2f'|format(s.valor_final) }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="detail-wrapper">
+        <div class="empty-state">
+            <h3>Nenhuma sessão ainda</h3>
+            <p>Assim que você fizer sua primeira simulação de carregamento, ela aparece aqui.</p>
+            <br>
+            <a href="/carregamento" class="btn btn-primary">Fazer carregamento</a>
+        </div>
+    </div>
+    {% endif %}
+
+    {% include 'partials/_footer.html' %}
+    {% include 'partials/_back_to_top.html' %}
+
+    <script src="/static/js/main.js"></script>
+</body>
+
+</html>

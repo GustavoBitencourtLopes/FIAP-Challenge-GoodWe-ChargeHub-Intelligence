@@ -19,8 +19,8 @@ CREATE TABLE veiculos (
     marca VARCHAR(60),
     modelo VARCHAR(60),
     ano INTEGER,
-    capacidade_bateria_kwh NUMERIC(6, 2), -- coletada no cadastro do veículo
-    percentual_atual NUMERIC(5, 2) DEFAULT 0, -- atualizada a cada sessão de carregamento
+    capacidade_bateria_kwh NUMERIC(6, 2),
+    percentual_atual NUMERIC(5, 2) DEFAULT 0,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -45,5 +45,7 @@ CREATE TABLE sessoes_carregamento (
     desconto NUMERIC(8, 2),
     valor_final NUMERIC(8, 2),
     pago BOOLEAN DEFAULT FALSE,
+    forma_pagamento VARCHAR(30), -- cartao_credito | cartao_debito | pix | carteira_digital
+    pago_em TIMESTAMP,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+);  

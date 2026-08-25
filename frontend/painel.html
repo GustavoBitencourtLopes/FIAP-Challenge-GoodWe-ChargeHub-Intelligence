@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -44,20 +46,26 @@
     <a href="/carregamento" class="painel-card">
       <div class="card-number">03</div>
       <h3>Fazer carregamento</h3>
-      <p>Simule uma sessão e veja tempo, custo e disponibilidade estimados.</p>
+      <p>Simule uma sessão, veja o preço e finalize o pagamento.</p>
     </a>
     {% else %}
     <a href="#" class="painel-card disabled">
       <span class="status-tag em-breve">cadastre um veículo</span>
       <div class="card-number">03</div>
       <h3>Fazer carregamento</h3>
-      <p>Simule uma sessão e veja tempo, custo e disponibilidade estimados.</p>
+      <p>Simule uma sessão, veja o preço e finalize o pagamento.</p>
     </a>
     {% endif %}
 
+    <a href="/historico" class="painel-card">
+      <div class="card-number">04</div>
+      <h3>Histórico</h3>
+      <p>Veja suas sessões de carregamento anteriores, com data, valor e pagamento.</p>
+    </a>
+
     <a href="#" class="painel-card disabled">
       <span class="status-tag em-breve">em breve</span>
-      <div class="card-number">04</div>
+      <div class="card-number">05</div>
       <h3>Relatórios &amp; IA</h3>
       <p>Acompanhe previsões de demanda, padrões de uso e recomendações inteligentes.</p>
     </a>
@@ -68,4 +76,5 @@
 
   <script src="/static/js/main.js"></script>
 </body>
+
 </html>

@@ -40,8 +40,7 @@
       <form id="form-carregamento">
         <div class="form-group">
           <label for="percentual_atual">Percentual atual da bateria (%)</label>
-          <input type="number" id="percentual_atual" min="0" max="100" step="1"
-            value="{{ veiculo.percentual_atual or '' }}" required>
+          <input type="number" id="percentual_atual" min="0" max="100" step="1" value="0" required>
         </div>
         <div class="form-group">
           <label for="percentual_desejado">Até quantos % você quer carregar?</label>
@@ -66,6 +65,13 @@
     </div>
   </div>
 
+  <!-- MODAL DE PAGAMENTO -->
+  <div class="modal-overlay" id="modal-pagamento">
+    <div class="modal-card" id="modal-conteudo">
+      <!-- Preenchido via JavaScript -->
+    </div>
+  </div>
+
   {% endif %}
 
   {% include 'partials/_footer.html' %}
@@ -74,11 +80,17 @@
   <script src="/static/js/main.js"></script>
   <script>
     const form = document.getElementById('form-carregamento');
+
     if (form) {
       const mensagem = document.getElementById('mensagem');
       const btnIniciar = document.getElementById('btn-iniciar');
       const resultadoVazio = document.getElementById('resultado-vazio');
       const resultadoConteudo = document.getElementById('resultado-conteudo');
+      const modalOverlay = document.getElementById('modal-pagamento');
+      const modalConteudo = document.getElementById('modal-conteudo');
+
+      let sessaoAtualId = null;
+      let valorAtual = 0;
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -105,7 +117,9 @@
             return;
           }
 
-          // Barra de status dos postos: verde = disponível, dourado = manutenção, vermelho = ocupado
+          sessaoAtualId = r.sessao_id;
+          valorAtual = r.valor_final;
+
           let barraPostos = r.status_postos
             .map(s => `<div class="charger-dot ${s === 'disponivel' ? 'disponivel' : 'ocupado'}"></div>`)
             .join('');
@@ -180,47 +194,15 @@
             <div class="info-box recomendacao">💡 ${r.recomendacao}</div>
             <div class="info-box cupom">🎁 Enquanto espera: ${r.dica_cupom}</div>
 
-            <button class="btn btn-primary btn-full" id="btn-pagamento" data-sessao="${r.sessao_id}">
+            <button class="btn btn-primary btn-full" id="btn-abrir-pagamento">
               Ir para pagamento · R$ ${r.valor_final.toFixed(2)}
             </button>
-            <div id="mensagem-pagamento" class="msg"></div>
           `;
 
           resultadoVazio.style.display = 'none';
           resultadoConteudo.style.display = 'block';
 
-          document.getElementById('btn-pagamento').addEventListener('click', async (ev) => {
-            const botao = ev.currentTarget;
-            const sessaoId = botao.dataset.sessao;
-            const mensagemPagamento = document.getElementById('mensagem-pagamento');
-
-            botao.disabled = true;
-            botao.textContent = 'Processando pagamento...';
-
-            try {
-              const respostaPagamento = await fetch(`/api/carregamento/${sessaoId}/pagar`, { method: 'POST' });
-              const resultadoPagamento = await respostaPagamento.json();
-
-              if (!respostaPagamento.ok) {
-                mensagemPagamento.textContent = resultadoPagamento.erro || 'Não foi possível confirmar o pagamento.';
-                mensagemPagamento.className = 'msg erro';
-                botao.disabled = false;
-                botao.textContent = 'Ir para pagamento';
-                return;
-              }
-
-              botao.textContent = '✓ Pagamento confirmado';
-              botao.classList.remove('btn-primary');
-              botao.classList.add('btn-success');
-              mensagemPagamento.textContent = resultadoPagamento.mensagem;
-              mensagemPagamento.className = 'msg sucesso';
-            } catch (err) {
-              mensagemPagamento.textContent = 'Erro de conexão com o servidor.';
-              mensagemPagamento.className = 'msg erro';
-              botao.disabled = false;
-              botao.textContent = 'Ir para pagamento';
-            }
-          });
+          document.getElementById('btn-abrir-pagamento').addEventListener('click', abrirModalEscolhaPagamento);
 
         } catch (err) {
           mensagem.textContent = 'Erro de conexão com o servidor.';
@@ -230,6 +212,190 @@
           btnIniciar.textContent = 'Ver disponibilidade e preço';
         }
       });
+
+      // ---------------------------------------------------------------
+      // MODAL DE PAGAMENTO
+      // ---------------------------------------------------------------
+
+      function abrirModal() {
+        modalOverlay.classList.add('aberto');
+      }
+
+      function fecharModal() {
+        modalOverlay.classList.remove('aberto');
+      }
+
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) fecharModal();
+      });
+
+      function abrirModalEscolhaPagamento() {
+        modalConteudo.innerHTML = `
+          <h3>Forma de pagamento</h3>
+          <p class="subtitle">Total a pagar: <strong>R$ ${valorAtual.toFixed(2)}</strong></p>
+
+          <div class="payment-methods">
+            <label class="payment-method-option" data-metodo="cartao_credito">
+              <input type="radio" name="metodo" value="cartao_credito">
+              <span class="method-icon">💳</span>
+              <span class="method-label">Cartão de crédito</span>
+            </label>
+            <label class="payment-method-option" data-metodo="cartao_debito">
+              <input type="radio" name="metodo" value="cartao_debito">
+              <span class="method-icon">💳</span>
+              <span class="method-label">Cartão de débito</span>
+            </label>
+            <label class="payment-method-option" data-metodo="pix">
+              <input type="radio" name="metodo" value="pix">
+              <span class="method-icon">🔑</span>
+              <span class="method-label">Pix</span>
+            </label>
+            <label class="payment-method-option" data-metodo="carteira_digital">
+              <input type="radio" name="metodo" value="carteira_digital">
+              <span class="method-icon">📱</span>
+              <span class="method-label">Carteira digital</span>
+            </label>
+          </div>
+
+          <div id="detalhe-metodo"></div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline btn-full" id="btn-cancelar-pagamento">Cancelar</button>
+            <button type="button" class="btn btn-primary btn-full" id="btn-confirmar-pagamento" disabled>Continuar</button>
+          </div>
+          <div id="mensagem-modal" class="msg"></div>
+        `;
+
+        abrirModal();
+
+        const opcoes = modalConteudo.querySelectorAll('.payment-method-option');
+        const detalheMetodo = modalConteudo.querySelector('#detalhe-metodo');
+        const btnConfirmar = modalConteudo.querySelector('#btn-confirmar-pagamento');
+        const btnCancelar = modalConteudo.querySelector('#btn-cancelar-pagamento');
+
+        btnCancelar.addEventListener('click', fecharModal);
+
+        opcoes.forEach(opcao => {
+          opcao.addEventListener('click', () => {
+            opcoes.forEach(o => o.classList.remove('selecionado'));
+            opcao.classList.add('selecionado');
+            opcao.querySelector('input').checked = true;
+            btnConfirmar.disabled = false;
+
+            const metodo = opcao.dataset.metodo;
+
+            if (metodo === 'cartao_credito' || metodo === 'cartao_debito') {
+              detalheMetodo.innerHTML = `
+                <div class="form-group">
+                  <label>Número do cartão</label>
+                  <input type="text" id="cartao_numero" placeholder="0000 0000 0000 0000" maxlength="19">
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Validade</label>
+                    <input type="text" id="cartao_validade" placeholder="MM/AA" maxlength="5">
+                  </div>
+                  <div class="form-group">
+                    <label>CVV</label>
+                    <input type="text" id="cartao_cvv" placeholder="123" maxlength="3">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Nome no cartão</label>
+                  <input type="text" id="cartao_nome" placeholder="Como está impresso no cartão">
+                </div>
+              `;
+            } else if (metodo === 'pix') {
+              const codigoFalso = 'chargegrid.pix.' + Math.random().toString(36).substring(2, 18);
+              detalheMetodo.innerHTML = `
+                <div class="pix-box">
+                  <div class="pix-qr-placeholder"></div>
+                  <div class="pix-code">${codigoFalso}</div>
+                  <p class="subtitle" style="margin-bottom:0;">Escaneie o QR Code ou copie o código acima no app do seu banco.</p>
+                </div>
+              `;
+            } else if (metodo === 'carteira_digital') {
+              detalheMetodo.innerHTML = `
+                <p class="subtitle">Confirme o pagamento usando a carteira digital do seu dispositivo.</p>
+              `;
+            }
+          });
+        });
+
+        btnConfirmar.addEventListener('click', () => {
+          const metodoSelecionado = modalConteudo.querySelector('input[name="metodo"]:checked');
+          const mensagemModal = modalConteudo.querySelector('#mensagem-modal');
+
+          if (!metodoSelecionado) return;
+          const metodo = metodoSelecionado.value;
+
+          if (metodo === 'cartao_credito' || metodo === 'cartao_debito') {
+            const numero = document.getElementById('cartao_numero').value.trim();
+            const validade = document.getElementById('cartao_validade').value.trim();
+            const cvv = document.getElementById('cartao_cvv').value.trim();
+            const nome = document.getElementById('cartao_nome').value.trim();
+
+            if (!numero || !validade || !cvv || !nome) {
+              mensagemModal.textContent = 'Preencha todos os dados do cartão.';
+              mensagemModal.className = 'msg erro';
+              return;
+            }
+          }
+
+          confirmarPagamento(metodo);
+        });
+      }
+
+      async function confirmarPagamento(metodo) {
+        const btnConfirmar = modalConteudo.querySelector('#btn-confirmar-pagamento');
+        const mensagemModal = modalConteudo.querySelector('#mensagem-modal');
+
+        btnConfirmar.disabled = true;
+        btnConfirmar.textContent = 'Processando...';
+
+        try {
+          const resposta = await fetch(`/api/carregamento/${sessaoAtualId}/pagar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ forma_pagamento: metodo }),
+          });
+          const resultado = await resposta.json();
+
+          if (!resposta.ok) {
+            mensagemModal.textContent = resultado.erro || 'Não foi possível confirmar o pagamento.';
+            mensagemModal.className = 'msg erro';
+            btnConfirmar.disabled = false;
+            btnConfirmar.textContent = 'Continuar';
+            return;
+          }
+
+          modalConteudo.innerHTML = `
+            <div class="payment-success">
+              <div class="icon">✅</div>
+              <h3>Pagamento aprovado!</h3>
+              <p class="subtitle">Pago via ${resultado.forma_pagamento_label} · R$ ${valorAtual.toFixed(2)}</p>
+              <button class="btn btn-success btn-full" id="btn-fechar-sucesso">Fechar</button>
+            </div>
+          `;
+
+          document.getElementById('btn-fechar-sucesso').addEventListener('click', () => {
+            fecharModal();
+            const botaoOriginal = document.getElementById('btn-abrir-pagamento');
+            if (botaoOriginal) {
+              botaoOriginal.textContent = '✓ Sessão paga';
+              botaoOriginal.classList.remove('btn-primary');
+              botaoOriginal.classList.add('btn-success');
+              botaoOriginal.disabled = true;
+            }
+          });
+
+        } catch (err) {
+          mensagemModal.textContent = 'Erro de conexão com o servidor.';
+          mensagemModal.className = 'msg erro';
+          btnConfirmar.disabled = false;
+          btnConfirmar.textContent = 'Continuar';
+        }
+      }
     }
   </script>
 </body>
