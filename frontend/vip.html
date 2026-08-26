@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seja VIP · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_logado.html' %}
+
+  <section class="painel-header">
+    <a href="/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Assinatura VIP</h1>
+    <p>Acesso exclusivo ao posto de recarga mais rápido do outlet.</p>
+  </section>
+
+  <div class="vip-hero">
+    {% if usuario.vip %}
+    <div class="vip-already">
+      Você já é assinante VIP. Tem acesso exclusivo ao <strong>DC Rápido 60kW</strong> sempre que quiser.
+    </div>
+    <div class="vip-price-card">
+      <div class="vip-eyebrow">Assinatura ativa</div>
+      <button class="btn btn-outline btn-full" id="btn-cancelar-vip">Cancelar assinatura</button>
+      <div id="mensagem" class="msg"></div>
+    </div>
+    {% else %}
+    <div class="vip-price-card">
+      <div class="vip-eyebrow">Plano VIP</div>
+      <div class="vip-price">R$ {{ '%.2f'|format(preco_vip) }} <span>/mês</span></div>
+
+      <div class="vip-benefits">
+        <div class="vip-benefit-item">
+          <span class="check">✓</span>
+          <span>Acesso exclusivo ao posto <strong>DC Rápido 60kW</strong>, o mais veloz do outlet.</span>
+        </div>
+        <div class="vip-benefit-item">
+          <span class="check">✓</span>
+          <span>Carregue seu veículo muito mais rápido que nos postos AC comuns.</span>
+        </div>
+        <div class="vip-benefit-item">
+          <span class="check">✓</span>
+          <span>Prioridade de acesso mesmo em horários de pico.</span>
+        </div>
+      </div>
+
+      <button class="btn btn-gold btn-full" id="btn-assinar-vip">Assinar agora</button>
+      <div id="mensagem" class="msg"></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="modal-overlay" id="modal-pagamento">
+    <div class="modal-card" id="modal-conteudo"></div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+  <script>
+    const modalOverlay = document.getElementById('modal-pagamento');
+    const modalConteudo = document.getElementById('modal-conteudo');
+    const mensagem = document.getElementById('mensagem');
+    const precoVip = {{ preco_vip }};
+
+    function abrirModal() { modalOverlay.classList.add('aberto'); }
+    function fecharModal() { modalOverlay.classList.remove('aberto'); }
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) fecharModal(); });
+
+    function detectarBandeira(numero) {
+      const limpo = numero.replace(/\s/g, '');
+      if (/^4/.test(limpo)) return 'Visa';
+      if (/^5/.test(limpo)) return 'Mastercard';
+      if (/^3/.test(limpo)) return 'Amex';
+      return '';
+    }
+
+    const btnAssinar = document.getElementById('btn-assinar-vip');
+    if (btnAssinar) {
+      btnAssinar.addEventListener('click', () => {
+        modalConteudo.innerHTML = `
+          <h3>Forma de pagamento</h3>
+          <p class="subtitle">Assinatura VIP · R$ ${precoVip.toFixed(2)}/mês</p>
+          <div class="payment-methods">
+            <label class="payment-method-option" data-metodo="cartao_credito"><input type="radio" name="metodo" value="cartao_credito"><span class="method-label">Cartão de crédito</span></label>
+            <label class="payment-method-option" data-metodo="pix"><input type="radio" name="metodo" value="pix"><span class="method-label">Pix</span></label>
+            <label class="payment-method-option" data-metodo="carteira_digital"><input type="radio" name="metodo" value="carteira_digital"><span class="method-label">Carteira digital</span></label>
+          </div>
+          <div id="detalhe-metodo"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline btn-full" id="btn-cancelar-modal">Cancelar</button>
+            <button type="button" class="btn btn-gold btn-full" id="btn-confirmar-vip" disabled>Confirmar assinatura</button>
+          </div>
+          <div id="mensagem-modal" class="msg"></div>
+        `;
+        abrirModal();
+
+        const opcoes = modalConteudo.querySelectorAll('.payment-method-option');
+        const detalheMetodo = modalConteudo.querySelector('#detalhe-metodo');
+        const btnConfirmar = modalConteudo.querySelector('#btn-confirmar-vip');
+        modalConteudo.querySelector('#btn-cancelar-modal').addEventListener('click', fecharModal);
+
+        opcoes.forEach(opcao => {
+          opcao.addEventListener('click', () => {
+            opcoes.forEach(o => o.classList.remove('selecionado'));
+            opcao.classList.add('selecionado');
+            opcao.querySelector('input').checked = true;
+            btnConfirmar.disabled = false;
+            const metodo = opcao.dataset.metodo;
+
+            if (metodo === 'cartao_credito') {
+              detalheMetodo.innerHTML = `
+                <div class="form-group">
+                  <label>Número do cartão <span class="brand-icon" id="bandeira-cartao"></span></label>
+                  <input type="text" id="cartao_numero" placeholder="0000 0000 0000 0000" maxlength="19" inputmode="numeric">
+                </div>
+                <div class="form-row">
+                  <div class="form-group"><label>Validade</label><input type="text" id="cartao_validade" placeholder="MM/AA" maxlength="5" inputmode="numeric"></div>
+                  <div class="form-group"><label>CVV</label><input type="text" id="cartao_cvv" placeholder="123" maxlength="3" inputmode="numeric"></div>
+                </div>
+                <div class="form-group"><label>Nome no cartão</label><input type="text" id="cartao_nome" placeholder="Como está impresso no cartão"></div>
+                <div class="form-group"><label>CPF do titular</label><input type="text" id="cliente_cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"></div>
+              `;
+
+              document.getElementById('cartao_numero').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                e.target.value = v.replace(/(.{4})/g, '$1 ').trim();
+                document.getElementById('bandeira-cartao').textContent = detectarBandeira(v);
+              });
+              document.getElementById('cartao_validade').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
+                e.target.value = v;
+              });
+              document.getElementById('cartao_cvv').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3); });
+              document.getElementById('cliente_cpf').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                e.target.value = v;
+              });
+
+            } else if (metodo === 'pix') {
+              const codigoFalso = '00020126580014BR.GOV.BCB.PIX0136chargegrid-vip-' + Math.random().toString(36).substring(2, 10);
+              detalheMetodo.innerHTML = `
+                <div class="pix-box">
+                  <div class="pix-qr-placeholder"></div>
+                  <div class="pix-code">${codigoFalso}</div>
+                  <p class="subtitle" style="margin-bottom:0;">Escaneie o QR Code ou copie o código no app do seu banco.</p>
+                </div>
+                <div class="form-group"><label>CPF do titular</label><input type="text" id="cliente_cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"></div>
+              `;
+              document.getElementById('cliente_cpf').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                e.target.value = v;
+              });
+              btnConfirmar.textContent = 'Já paguei';
+            } else if (metodo === 'carteira_digital') {
+              detalheMetodo.innerHTML = `<p class="subtitle">Confirme a assinatura usando a carteira digital do seu dispositivo.</p>`;
+              btnConfirmar.textContent = 'Confirmar com um toque';
+            }
+
+            if (metodo === 'cartao_credito') btnConfirmar.textContent = 'Confirmar assinatura';
+          });
+        });
+
+        btnConfirmar.addEventListener('click', async () => {
+          const metodoSelecionado = modalConteudo.querySelector('input[name="metodo"]:checked');
+          const mensagemModal = modalConteudo.querySelector('#mensagem-modal');
+          if (!metodoSelecionado) return;
+          const metodo = metodoSelecionado.value;
+
+          if (metodo === 'cartao_credito') {
+            const numero = document.getElementById('cartao_numero').value.trim();
+            const validade = document.getElementById('cartao_validade').value.trim();
+            const cvv = document.getElementById('cartao_cvv').value.trim();
+            const nome = document.getElementById('cartao_nome').value.trim();
+            const cpf = document.getElementById('cliente_cpf').value.trim();
+            if (!numero || numero.replace(/\s/g, '').length < 16 || !validade || validade.length < 5 || !cvv || cvv.length < 3 || !nome || !cpf) {
+              mensagemModal.textContent = 'Preencha todos os dados do cartão corretamente.';
+              mensagemModal.className = 'msg erro';
+              return;
+            }
+          } else if (metodo === 'pix') {
+            const cpf = document.getElementById('cliente_cpf').value.trim();
+            if (!cpf) {
+              mensagemModal.textContent = 'Informe o CPF do titular.';
+              mensagemModal.className = 'msg erro';
+              return;
+            }
+          }
+
+          btnConfirmar.disabled = true;
+          btnConfirmar.textContent = 'Processando...';
+
+          modalConteudo.innerHTML = `
+            <div class="processing-overlay">
+              <div class="spinner"></div>
+              <h3>Processando pagamento...</h3>
+            </div>
+          `;
+
+          setTimeout(async () => {
+            try {
+              const resposta = await fetch('/api/vip/assinar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ forma_pagamento: metodo }),
+              });
+              const resultado = await resposta.json();
+
+              if (!resposta.ok) {
+                modalConteudo.innerHTML = `
+                  <div class="payment-success">
+                    <div class="icon">⚠️</div>
+                    <h3>Não foi possível confirmar</h3>
+                    <p class="subtitle">${resultado.erro || 'Tente novamente.'}</p>
+                    <button class="btn btn-outline btn-full" id="btn-fechar-erro">Fechar</button>
+                  </div>
+                `;
+                document.getElementById('btn-fechar-erro').addEventListener('click', fecharModal);
+                return;
+              }
+
+              modalConteudo.innerHTML = `
+                <div class="payment-success">
+                  <div class="icon">✅</div>
+                  <h3>Assinatura ativada!</h3>
+                  <p class="subtitle">Agora você tem acesso ao posto DC Rápido 60kW.</p>
+                </div>
+              `;
+              setTimeout(() => { window.location.href = resultado.redirect || '/painel'; }, 1800);
+            } catch (err) {
+              modalConteudo.innerHTML = `
+                <div class="payment-success">
+                  <div class="icon">⚠️</div>
+                  <h3>Erro de conexão</h3>
+                  <button class="btn btn-outline btn-full" id="btn-fechar-erro">Fechar</button>
+                </div>
+              `;
+              document.getElementById('btn-fechar-erro').addEventListener('click', fecharModal);
+            }
+          }, 1600);
+        });
+      });
+    }
+
+    const btnCancelarVip = document.getElementById('btn-cancelar-vip');
+    if (btnCancelarVip) {
+      btnCancelarVip.addEventListener('click', async () => {
+        const confirmado = confirm('Tem certeza que deseja cancelar sua assinatura VIP?');
+        if (!confirmado) return;
+
+        try {
+          const resposta = await fetch('/api/vip/cancelar', { method: 'POST' });
+          const resultado = await resposta.json();
+          if (!resposta.ok) {
+            mensagem.textContent = resultado.erro || 'Não foi possível cancelar.';
+            mensagem.className = 'msg erro';
+            return;
+          }
+          window.location.href = resultado.redirect || '/painel';
+        } catch (err) {
+          mensagem.textContent = 'Erro de conexão com o servidor.';
+          mensagem.className = 'msg erro';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

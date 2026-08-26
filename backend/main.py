@@ -8,21 +8,27 @@ Fluxo de onboarding:
 2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
 3. /painel           -> as áreas do sistema.
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
-5. /carregamento     -> simulação inteligente de uma sessão de carregamento,
-   com pagamento simulado (escolha de forma de pagamento).
-6. /minha-conta      -> visualizar dados da conta e trocar senha.
+5. /carregamento     -> o usuário ESCOLHE manualmente qual posto usar (o
+   sistema mostra o status ao vivo dos 4 postos) e simula a sessão.
+6. /minha-conta      -> visualizar dados da conta, cupons resgatados e
+   trocar senha.
 7. /historico        -> histórico de sessões de carregamento do usuário.
+8. /relatorios-ia    -> assistente virtual (chat) via Google Gemini.
+9. /vip              -> assinatura VIP, que libera o posto DC Rápido 60kW.
 
 SISTEMA INTELIGENTE (regras, sem custo de API):
-Decide se é horário de pico, a lotação do outlet, sugestões de horário,
-dicas de cupom e o preço final (com taxa extra em horário de pico).
+- Detecta horário de pico pelo relógio real (fuso de São Paulo).
+- 4 postos de carregamento HETEROGÊNEOS (2x AC 7kW, 1x AC 22kW,
+  1x DC Rápido 60kW — este último exclusivo para assinantes VIP).
+- O usuário escolhe qual posto usar entre os disponíveis no momento.
+- Calcula o tempo de carga respeitando a curva de carregamento real de
+  baterias de íon-lítio (rápido até 80%, mais lento depois).
+- Gera de 2 a 3 ofertas comerciais de lojas do outlet a cada sessão, que
+  o usuário pode resgatar (fica salvo em "Meus cupons", na tela de conta).
 
-CHATBOT (IA generativa real, via API da Anthropic):
-Diferente do sistema de regras acima, o assistente de chat (/api/chat) usa
-de fato o modelo Claude Haiku 4.5 para responder perguntas livres do
-usuário. Isso tem um custo real, porém muito baixo (Haiku é o modelo mais
-barato da Anthropic). A chave de API fica em uma variável de ambiente
-(ANTHROPIC_API_KEY), nunca no código-fonte.
+CHATBOT / ASSISTENTE (IA generativa real, via Google Gemini):
+A página /relatorios-ia usa um modelo de linguagem (Gemini 3.5 Flash-Lite,
+camada gratuita permanente) para responder perguntas livres do usuário.
 
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
@@ -31,15 +37,16 @@ será usado quando migrarmos para PostgreSQL.
 IMPORTANTE PARA DEPLOY (Render/produção):
 Em produção, quem roda esta aplicação é o gunicorn, que apenas IMPORTA
 este arquivo e usa a variável `app` — o bloco `if __name__ == "__main__"`
-não é executado. Por isso, a criação das tabelas (`db.create_all()`)
-acontece logo abaixo, fora desse bloco. A variável ANTHROPIC_API_KEY
-precisa ser configurada nas variáveis de ambiente do Render também
-(Settings -> Environment), não só no .env local.
+não é executado. A criação das tabelas (`db.create_all()`) acontece fora
+desse bloco. A variável GOOGLE_API_KEY precisa ser configurada nas
+variáveis de ambiente do Render TAMBÉM (Settings -> Environment) —
+o arquivo .env local NÃO é enviado para o Render, então se você quer
+que a IA funcione no site publicado, precisa configurar a chave lá
+separadamente, do mesmo jeito que fez no .env local.
 
 NOTA SOBRE FUSO HORÁRIO: o horário de pico é calculado usando o fuso de
-São Paulo. Em algumas máquinas Windows, o Python não tem o banco de dados
-de fusos horários (IANA) instalado por padrão — por isso o pacote
-"tzdata" está no requirements.txt, com um fallback de segurança no código.
+São Paulo, com fallback de segurança caso o "tzdata" não esteja
+disponível na máquina.
 """
 
 import os
@@ -53,12 +60,12 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
-load_dotenv()  # lê o arquivo .env local, se existir (não afeta produção no Render)
+load_dotenv()
 
 try:
-    import anthropic
+    from google import genai
 except ImportError:
-    anthropic = None
+    genai = None
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
@@ -76,10 +83,29 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-anthropic_client = None
-if anthropic is not None and ANTHROPIC_API_KEY:
-    anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+gemini_client = None
+if genai is not None and GOOGLE_API_KEY:
+    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+
+# ---------------------------------------------------------------------------
+# AVISO PERMANENTE DE STATUS DA IA (aparece toda vez que o servidor liga)
+# ---------------------------------------------------------------------------
+# Isso existe para você NUNCA MAIS precisar adivinhar se a chave carregou.
+# Olhe o terminal assim que rodar "python main.py" — a resposta já está ali.
+
+print("=" * 60)
+if genai is None:
+    print("STATUS DA IA: ❌ pacote 'google-genai' não está instalado.")
+    print("  -> Rode: pip install -r backend/requirements.txt")
+elif not GOOGLE_API_KEY:
+    print("STATUS DA IA: ❌ GOOGLE_API_KEY não encontrada no .env.")
+    print("  -> Confirme que existe um arquivo '.env' na RAIZ do projeto")
+    print("     (mesma pasta de 'backend/' e 'frontend/'), com a linha:")
+    print("     GOOGLE_API_KEY=sua_chave_aqui")
+else:
+    print("STATUS DA IA: ✅ configurada e pronta para uso (Gemini).")
+print("=" * 60)
 
 
 # ---------------------------------------------------------------------------
@@ -93,9 +119,14 @@ class Usuario(db.Model):
     nome = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
+    vip = db.Column(db.Boolean, default=False)
 
     veiculo = db.relationship(
         "Veiculo", backref="usuario", uselist=False, cascade="all, delete-orphan"
+    )
+    cupons = db.relationship(
+        "CupomResgatado", backref="usuario", cascade="all, delete-orphan",
+        order_by="desc(CupomResgatado.criado_em)",
     )
 
     def set_senha(self, senha_plana):
@@ -143,6 +174,9 @@ class SessaoCarregamento(db.Model):
     postos_ocupados = db.Column(db.Integer)
     horario_pico = db.Column(db.Boolean, default=False)
 
+    carregador_tipo = db.Column(db.String(40))
+    carregador_potencia_kw = db.Column(db.Float)
+
     tarifa_base_kwh = db.Column(db.Float)
     taxa_pico_kwh = db.Column(db.Float)
     valor_total = db.Column(db.Float)
@@ -156,6 +190,18 @@ class SessaoCarregamento(db.Model):
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class CupomResgatado(db.Model):
+    __tablename__ = "cupons_resgatados"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=False)
+    loja = db.Column(db.String(80))
+    categoria = db.Column(db.String(60))
+    descricao = db.Column(db.String(200))
+    codigo = db.Column(db.String(20))
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 with app.app_context():
     db.create_all()
 
@@ -165,8 +211,6 @@ with app.app_context():
 # ---------------------------------------------------------------------------
 
 def login_required(view_func):
-    """Bloqueia rotas que exigem login E limpa sessões 'fantasma'."""
-
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         usuario_id = session.get("usuario_id")
@@ -189,6 +233,16 @@ def veiculo_do_usuario_ou_404(veiculo_id):
     if veiculo.usuario_id != session.get("usuario_id"):
         abort(403)
     return veiculo
+
+
+def _formatar_data_br(dt_utc):
+    if dt_utc is None:
+        return "—"
+    try:
+        dt_com_tz = dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo"))
+    except ZoneInfoNotFoundError:
+        dt_com_tz = dt_utc
+    return dt_com_tz.strftime("%d/%m/%Y às %H:%M")
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +279,7 @@ def painel():
         "painel.html",
         usuario=usuario,
         tem_veiculo=usuario.veiculo is not None,
+        pagina_atual="painel",
     )
 
 
@@ -232,7 +287,17 @@ def painel():
 @login_required
 def pagina_minha_conta():
     usuario = usuario_atual()
-    return render_template("minha_conta.html", usuario=usuario)
+    cupons = [
+        {
+            "loja": c.loja,
+            "categoria": c.categoria,
+            "descricao": c.descricao,
+            "codigo": c.codigo,
+            "data": _formatar_data_br(c.criado_em),
+        }
+        for c in usuario.cupons
+    ]
+    return render_template("minha_conta.html", usuario=usuario, cupons=cupons, pagina_atual="minha_conta")
 
 
 @app.route("/meus-veiculos")
@@ -240,21 +305,21 @@ def pagina_minha_conta():
 def meus_veiculos():
     usuario = usuario_atual()
     veiculos = [usuario.veiculo] if usuario.veiculo else []
-    return render_template("meus_veiculos.html", veiculos=veiculos)
+    return render_template("meus_veiculos.html", veiculos=veiculos, usuario=usuario, pagina_atual="veiculo")
 
 
 @app.route("/veiculo/<int:veiculo_id>")
 @login_required
 def veiculo_detalhe(veiculo_id):
     veiculo = veiculo_do_usuario_ou_404(veiculo_id)
-    return render_template("veiculo_detalhe.html", veiculo=veiculo)
+    return render_template("veiculo_detalhe.html", veiculo=veiculo, usuario=usuario_atual(), pagina_atual="veiculo")
 
 
 @app.route("/veiculo/<int:veiculo_id>/editar")
 @login_required
 def veiculo_editar_pagina(veiculo_id):
     veiculo = veiculo_do_usuario_ou_404(veiculo_id)
-    return render_template("veiculo_editar.html", veiculo=veiculo)
+    return render_template("veiculo_editar.html", veiculo=veiculo, usuario=usuario_atual(), pagina_atual="veiculo")
 
 
 @app.route("/carregamento")
@@ -270,8 +335,26 @@ def pagina_carregamento():
     return render_template(
         "carregamento.html",
         veiculo=veiculo,
+        usuario=usuario,
         capacidade_definida=capacidade_definida,
+        pagina_atual="carregamento",
     )
+
+
+@app.route("/relatorios-ia")
+@login_required
+def pagina_relatorios_ia():
+    return render_template("relatorios_ia.html", usuario=usuario_atual(), pagina_atual="ia")
+
+
+PRECO_VIP_MENSAL = 29.90
+
+
+@app.route("/vip")
+@login_required
+def pagina_vip():
+    usuario = usuario_atual()
+    return render_template("vip.html", usuario=usuario, preco_vip=PRECO_VIP_MENSAL, pagina_atual="vip")
 
 
 FORMA_PAGAMENTO_LABEL = {
@@ -280,16 +363,6 @@ FORMA_PAGAMENTO_LABEL = {
     "pix": "Pix",
     "carteira_digital": "Carteira Digital",
 }
-
-
-def _formatar_data_br(dt_utc):
-    if dt_utc is None:
-        return "—"
-    try:
-        dt_com_tz = dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo"))
-    except ZoneInfoNotFoundError:
-        dt_com_tz = dt_utc
-    return dt_com_tz.strftime("%d/%m/%Y às %H:%M")
 
 
 @app.route("/historico")
@@ -312,11 +385,12 @@ def historico():
             "valor_final": s.valor_final,
             "pago": s.pago,
             "forma_pagamento": FORMA_PAGAMENTO_LABEL.get(s.forma_pagamento, "—"),
+            "carregador_tipo": s.carregador_tipo or "—",
         }
         for s in sessoes_db
     ]
 
-    return render_template("historico.html", sessoes=sessoes)
+    return render_template("historico.html", sessoes=sessoes, usuario=usuario, pagina_atual="historico")
 
 
 # ---------------------------------------------------------------------------
@@ -421,10 +495,14 @@ def api_veiculo_excluir(veiculo_id):
 # "IA" — SISTEMA INTELIGENTE DE CARREGAMENTO (baseado em regras)
 # ---------------------------------------------------------------------------
 
-TOTAL_CARREGADORES = 4
-POTENCIA_CARREGADOR_KW = 7.0  # mesma potência do GW7K-HCA-20 (linha HCA G2 da GoodWe)
+TIPOS_CARREGADOR = [
+    {"id": 1, "tipo": "AC 7kW · Posto 1", "potencia_kw": 7.0, "vip": False},
+    {"id": 2, "tipo": "AC 7kW · Posto 2", "potencia_kw": 7.0, "vip": False},
+    {"id": 3, "tipo": "AC 22kW · Posto 3", "potencia_kw": 22.0, "vip": False},
+    {"id": 4, "tipo": "DC Rápido 60kW · Posto VIP", "potencia_kw": 60.0, "vip": True},
+]
 
-HORARIOS_PICO = [(8, 10), (18, 21)]  # fuso de São Paulo
+HORARIOS_PICO = [(8, 10), (18, 21)]
 
 TARIFAS_POR_KWH = {"baixa": 0.79, "media": 0.99, "alta": 1.29}
 ESPERA_MINUTOS = {"baixa": 0, "media": 8, "alta": 18}
@@ -439,13 +517,37 @@ RECOMENDACOES = {
     "alta": "O outlet está bastante cheio agora. Se puder, considere voltar em outro horário.",
 }
 
-CUPONS = [
-    "15% de desconto na Cafeteria do Outlet",
-    "Cashback de R$ 10 em qualquer loja parceira",
-    "Compre 1 e leve 2 na loja de conveniência",
-    "10% de desconto na praça de alimentação",
-    "Frete grátis em compras acima de R$ 100 na loja âncora",
+OFERTAS_OUTLET = [
+    {"loja": "Cafeteria Central", "categoria": "Alimentação", "descricao": "15% de desconto em qualquer bebida quente"},
+    {"loja": "Sabor Express", "categoria": "Alimentação", "descricao": "R$ 8 de cashback em compras acima de R$ 30"},
+    {"loja": "Moda Urbana", "categoria": "Vestuário", "descricao": "20% de desconto em uma peça à sua escolha"},
+    {"loja": "TechZone", "categoria": "Eletrônicos", "descricao": "10% de desconto em acessórios e fones de ouvido"},
+    {"loja": "Livraria Page", "categoria": "Livraria", "descricao": "Compre 1 livro e leve um café de brinde"},
+    {"loja": "Doce Ponto", "categoria": "Alimentação", "descricao": "R$ 5 de cashback em qualquer doce"},
+    {"loja": "Beauty Spot", "categoria": "Beleza", "descricao": "25% de desconto em serviços expressos"},
+    {"loja": "SportMax", "categoria": "Esportes", "descricao": "12% de desconto em calçados"},
+    {"loja": "Praça de Alimentação", "categoria": "Alimentação", "descricao": "R$ 10 de cashback no almoço ou jantar"},
+    {"loja": "Cinema Outlet", "categoria": "Lazer", "descricao": "30% de desconto em ingressos durante sua sessão"},
+    {"loja": "Pet Shop Amigo", "categoria": "Pet", "descricao": "R$ 6 de cashback em produtos para pets"},
+    {"loja": "Brinquedos & Cia", "categoria": "Infantil", "descricao": "15% de desconto em brinquedos selecionados"},
 ]
+
+
+def _gerar_ofertas(tempo_total_min):
+    quantidade = 3 if tempo_total_min >= 25 else 2
+    escolhidas = random.sample(OFERTAS_OUTLET, k=min(quantidade, len(OFERTAS_OUTLET)))
+
+    ofertas = []
+    for oferta in escolhidas:
+        ofertas.append({
+            "loja": oferta["loja"],
+            "categoria": oferta["categoria"],
+            "descricao": oferta["descricao"],
+            "codigo": f"CG-{random.randint(1000, 9999)}",
+            "validade_min": int(round(tempo_total_min)),
+        })
+    return ofertas
+
 
 FORMAS_PAGAMENTO_VALIDAS = set(FORMA_PAGAMENTO_LABEL.keys())
 
@@ -463,33 +565,51 @@ def _esta_em_horario_de_pico(agora=None):
     return any(inicio <= hora < fim for inicio, fim in HORARIOS_PICO)
 
 
-def _simular_postos(pico):
-    em_manutencao = 1 if random.random() < 0.12 else 0
-    operacionais = TOTAL_CARREGADORES - em_manutencao
-
+def _status_aleatorio(pico):
     pesos = [0.15, 0.35, 0.50] if pico else [0.55, 0.30, 0.15]
-    status_possiveis = ["disponivel", "carregando", "ocupado"]
-    sorteio = random.choices(status_possiveis, weights=pesos, k=operacionais)
+    return random.choices(["disponivel", "carregando", "ocupado"], weights=pesos, k=1)[0]
 
-    disponiveis = sorteio.count("disponivel")
-    ocupados = operacionais - disponiveis
-    taxa_ocupacao = ocupados / operacionais if operacionais else 1
 
-    if taxa_ocupacao <= 0.25:
-        nivel = "baixa"
-    elif taxa_ocupacao <= 0.75:
-        nivel = "media"
-    else:
-        nivel = "alta"
+@app.route("/api/carregamento/postos")
+@login_required
+def api_carregamento_postos():
+    usuario = usuario_atual()
+    pico = _esta_em_horario_de_pico()
+    manutencao_idx = random.randrange(len(TIPOS_CARREGADOR)) if random.random() < 0.12 else None
 
-    return {
-        "em_manutencao": em_manutencao,
-        "operacionais": operacionais,
-        "disponiveis": disponiveis,
-        "ocupados": ocupados,
-        "nivel": nivel,
-        "status_lista": sorteio,
-    }
+    postos = []
+    for i, info in enumerate(TIPOS_CARREGADOR):
+        status = "manutencao" if i == manutencao_idx else _status_aleatorio(pico)
+        bloqueado_vip = info["vip"] and not usuario.vip
+        postos.append({
+            "id": info["id"],
+            "tipo": info["tipo"],
+            "potencia_kw": info["potencia_kw"],
+            "vip": info["vip"],
+            "status": status,
+            "bloqueado_vip": bloqueado_vip,
+            "selecionavel": status == "disponivel" and not bloqueado_vip,
+        })
+
+    return jsonify({"postos": postos, "horario_pico": pico})
+
+
+def _tempo_carga_com_curva(capacidade_kwh, percentual_inicial, percentual_final, potencia_kw):
+    tempo_total_h = 0.0
+    ponto = percentual_inicial
+
+    if ponto < 80:
+        fatia_final = min(percentual_final, 80)
+        energia_fatia = capacidade_kwh * (fatia_final - ponto) / 100
+        tempo_total_h += energia_fatia / potencia_kw
+        ponto = fatia_final
+
+    if ponto < percentual_final:
+        potencia_reduzida = potencia_kw * 0.35
+        energia_fatia = capacidade_kwh * (percentual_final - ponto) / 100
+        tempo_total_h += energia_fatia / potencia_reduzida
+
+    return tempo_total_h * 60
 
 
 def _gerar_sugestao_horario(ocupados, nivel):
@@ -520,6 +640,7 @@ def api_carregamento_simular():
 
     percentual_atual = _numero_ou_none(dados.get("percentual_atual"))
     percentual_desejado = _numero_ou_none(dados.get("percentual_desejado"))
+    carregador_id = _numero_ou_none(dados.get("carregador_id"), int)
 
     if percentual_atual is None or percentual_desejado is None:
         return jsonify({"erro": "Preencha o percentual atual e o percentual desejado."}), 400
@@ -530,13 +651,50 @@ def api_carregamento_simular():
     if percentual_desejado <= percentual_atual:
         return jsonify({"erro": "O percentual desejado deve ser maior que o atual."}), 400
 
+    carregador = next((c for c in TIPOS_CARREGADOR if c["id"] == carregador_id), None)
+    if carregador is None:
+        return jsonify({"erro": "Selecione um posto de carregamento."}), 400
+
+    if carregador["vip"] and not usuario.vip:
+        return jsonify({"erro": "Este posto é exclusivo para assinantes VIP."}), 403
+
     capacidade_kwh = veiculo.capacidade_bateria_kwh
     pico = _esta_em_horario_de_pico()
-    postos = _simular_postos(pico)
-    nivel = postos["nivel"]
+
+    outros = [c for c in TIPOS_CARREGADOR if c["id"] != carregador_id]
+    manutencao_idx = random.randrange(len(outros)) if random.random() < 0.12 else None
+
+    status_postos = []
+    ocupados = 1
+    em_manutencao = 0
+
+    for i, info in enumerate(outros):
+        if i == manutencao_idx:
+            status = "manutencao"
+            em_manutencao += 1
+        else:
+            status = _status_aleatorio(pico)
+            if status != "disponivel":
+                ocupados += 1
+        status_postos.append({"tipo": info["tipo"], "potencia_kw": info["potencia_kw"], "status": status})
+
+    status_postos.append({"tipo": carregador["tipo"], "potencia_kw": carregador["potencia_kw"], "status": "carregando"})
+
+    operacionais = len(TIPOS_CARREGADOR) - em_manutencao
+    disponiveis = operacionais - ocupados
+    taxa_ocupacao = ocupados / operacionais if operacionais else 1
+
+    if taxa_ocupacao <= 0.25:
+        nivel = "baixa"
+    elif taxa_ocupacao <= 0.75:
+        nivel = "media"
+    else:
+        nivel = "alta"
 
     energia_kwh = capacidade_kwh * (percentual_desejado - percentual_atual) / 100
-    tempo_carregamento_min = (energia_kwh / POTENCIA_CARREGADOR_KW) * 60
+    tempo_carregamento_min = _tempo_carga_com_curva(
+        capacidade_kwh, percentual_atual, percentual_desejado, carregador["potencia_kw"]
+    )
     tempo_espera_min = ESPERA_MINUTOS[nivel]
     tempo_total_min = tempo_carregamento_min + tempo_espera_min
 
@@ -548,10 +706,6 @@ def api_carregamento_simular():
     desconto = valor_total * DESCONTO_PERCENTUAL[nivel]
     valor_final = valor_total - desconto
 
-    # NOTA: não persistimos mais o percentual_atual do veículo aqui — cada
-    # simulação começa do zero, o usuário informa livremente o ponto de
-    # partida da bateria a cada nova sessão.
-
     sessao = SessaoCarregamento(
         usuario_id=usuario.id,
         veiculo_id=veiculo.id,
@@ -562,10 +716,12 @@ def api_carregamento_simular():
         tempo_espera_min=tempo_espera_min,
         tempo_total_min=round(tempo_total_min, 1),
         nivel_lotacao=nivel,
-        postos_operacionais=postos["operacionais"],
-        postos_disponiveis=postos["disponiveis"],
-        postos_ocupados=postos["ocupados"],
+        postos_operacionais=operacionais,
+        postos_disponiveis=disponiveis,
+        postos_ocupados=ocupados,
         horario_pico=pico,
+        carregador_tipo=carregador["tipo"],
+        carregador_potencia_kw=carregador["potencia_kw"],
         tarifa_base_kwh=tarifa_base,
         taxa_pico_kwh=round(taxa_pico_kwh, 4),
         valor_total=round(valor_total, 2),
@@ -586,12 +742,15 @@ def api_carregamento_simular():
         "lotacao_classe": nivel,
         "horario_pico": pico,
 
-        "postos_total": TOTAL_CARREGADORES,
-        "postos_operacionais": postos["operacionais"],
-        "postos_em_manutencao": postos["em_manutencao"],
-        "postos_disponiveis": postos["disponiveis"],
-        "postos_ocupados": postos["ocupados"],
-        "status_postos": postos["status_lista"],
+        "postos_total": len(TIPOS_CARREGADOR),
+        "postos_operacionais": operacionais,
+        "postos_em_manutencao": em_manutencao,
+        "postos_disponiveis": disponiveis,
+        "postos_ocupados": ocupados,
+        "status_postos": status_postos,
+
+        "carregador_tipo": carregador["tipo"],
+        "carregador_potencia_kw": carregador["potencia_kw"],
 
         "energia_kwh": round(energia_kwh, 2),
         "tempo_carregamento_min": round(tempo_carregamento_min, 1),
@@ -605,8 +764,8 @@ def api_carregamento_simular():
         "valor_final": round(valor_final, 2),
 
         "recomendacao": recomendacao,
-        "sugestao_horario": _gerar_sugestao_horario(postos["ocupados"], nivel),
-        "dica_cupom": random.choice(CUPONS),
+        "sugestao_horario": _gerar_sugestao_horario(ocupados, nivel),
+        "ofertas": _gerar_ofertas(tempo_total_min),
     })
 
 
@@ -631,36 +790,128 @@ def api_carregamento_pagar(sessao_id):
     return jsonify({
         "mensagem": "Pagamento aprovado com sucesso!",
         "forma_pagamento_label": FORMA_PAGAMENTO_LABEL[forma_pagamento],
+        "redirect": url_for("historico"),
     })
 
 
 # ---------------------------------------------------------------------------
-# API - CHATBOT (IA generativa real, via Anthropic)
+# API - CUPONS RESGATADOS
 # ---------------------------------------------------------------------------
 
-CHAT_MODELO = "claude-haiku-4-5-20251001"  # modelo mais barato da Anthropic
+@app.route("/api/cupons/resgatar", methods=["POST"])
+@login_required
+def api_cupom_resgatar():
+    usuario = usuario_atual()
+    dados = request.get_json(silent=True) or {}
 
-CHAT_SYSTEM_PROMPT = """Você é o assistente virtual do ChargeGrid Intelligence, uma plataforma que
-simula uma rede de carregadores de veículos elétricos em outlets comerciais (projeto do FIAP EV
-Challenge 2026, em parceria com a GoodWe).
+    cupom = CupomResgatado(
+        usuario_id=usuario.id,
+        loja=(dados.get("loja") or "").strip()[:80],
+        categoria=(dados.get("categoria") or "").strip()[:60],
+        descricao=(dados.get("descricao") or "").strip()[:200],
+        codigo=(dados.get("codigo") or "").strip()[:20],
+    )
+    db.session.add(cupom)
+    db.session.commit()
 
-Ajude o usuário com:
-- dúvidas sobre como funciona o carregamento do veículo elétrico dele;
-- recomendações gerais sobre horários de menor demanda no outlet;
-- dúvidas sobre a plataforma (cadastro de veículo, histórico de sessões, pagamento simulado);
-- curiosidades gerais sobre carros elétricos e recarga.
+    return jsonify({"mensagem": "Cupom resgatado! Confira em Minha Conta."}), 201
 
-Seja breve, direto e simpático. Respostas de no máximo 3 a 4 frases. Se não souber algo específico
-sobre a sessão atual do usuário, seja honesto e sugira que ele confira a tela de "Fazer carregamento"
-ou o "Histórico" no painel."""
+
+# ---------------------------------------------------------------------------
+# API - ASSINATURA VIP
+# ---------------------------------------------------------------------------
+
+@app.route("/api/vip/assinar", methods=["POST"])
+@login_required
+def api_vip_assinar():
+    usuario = usuario_atual()
+    dados = request.get_json(silent=True) or {}
+    forma_pagamento = dados.get("forma_pagamento")
+
+    if forma_pagamento not in FORMAS_PAGAMENTO_VALIDAS:
+        return jsonify({"erro": "Selecione uma forma de pagamento válida."}), 400
+
+    usuario.vip = True
+    db.session.commit()
+
+    return jsonify({
+        "mensagem": "Assinatura VIP ativada com sucesso!",
+        "redirect": url_for("painel"),
+    })
+
+
+@app.route("/api/vip/cancelar", methods=["POST"])
+@login_required
+def api_vip_cancelar():
+    usuario = usuario_atual()
+    usuario.vip = False
+    db.session.commit()
+    return jsonify({"mensagem": "Assinatura VIP cancelada.", "redirect": url_for("painel")})
+
+
+# ---------------------------------------------------------------------------
+# API - ASSISTENTE / CHATBOT (IA generativa real, via Google Gemini)
+# ---------------------------------------------------------------------------
+
+CHAT_MODELO = "gemini-3.5-flash-lite"
+
+
+def _montar_system_prompt(usuario):
+    catalogo_lojas = "\n".join(
+        f"- {o['loja']} ({o['categoria']}): {o['descricao']}" for o in OFERTAS_OUTLET
+    )
+
+    tipos_texto = (
+        "- AC 7kW (Wallbox padrão, 2 unidades): carregador mais comum e barato de instalar. "
+        "Ideal para quem vai ficar tempo suficiente parado (compras, refeição). Carrega mais devagar.\n"
+        "- AC 22kW (Wallbox trifásico, 1 unidade): opção intermediária, cerca de 3x mais rápida "
+        "que o AC 7kW.\n"
+        "- DC Rápido 60kW (1 unidade, EXCLUSIVO PARA ASSINANTES VIP): o mais rápido do outlet. "
+        "Só pode ser usado por quem tem a assinatura VIP da plataforma."
+    )
+
+    contexto_pessoal = f" O usuário logado se chama {usuario.nome}."
+    if usuario.vip:
+        contexto_pessoal += " Ele já é assinante VIP, então tem acesso ao posto DC Rápido 60kW."
+    else:
+        contexto_pessoal += " Ele ainda não é assinante VIP."
+    if usuario.veiculo:
+        marca = usuario.veiculo.marca or ""
+        modelo = usuario.veiculo.modelo or ""
+        if marca or modelo:
+            contexto_pessoal += f" O veículo cadastrado dele é um {marca} {modelo}.".strip()
+        if usuario.veiculo.capacidade_bateria_kwh:
+            contexto_pessoal += f" A bateria do carro tem {usuario.veiculo.capacidade_bateria_kwh} kWh de capacidade."
+
+    return f"""Você é o assistente virtual do ChargeGrid Intelligence, uma plataforma que
+simula uma rede de carregadores de veículos elétricos em um outlet comercial (projeto do
+FIAP EV Challenge 2026, em parceria com a GoodWe).
+
+SEU PAPEL, nesta ordem de prioridade:
+1. Ajudar o usuário a decidir o MELHOR HORÁRIO para carregar. Horários de pico do outlet:
+   08h-10h e 18h-21h (horário de São Paulo) — mais fila e tarifa mais cara nesses horários.
+2. Recomendar LOJAS DO OUTLET quando o usuário quiser comprar algo ou perguntar sobre
+   promoções. Use APENAS as lojas e ofertas reais listadas abaixo — nunca invente uma:
+{catalogo_lojas}
+3. Explicar a DIFERENÇA ENTRE OS CARREGADORES quando perguntado:
+{tipos_texto}
+   O usuário escolhe manualmente qual posto usar entre os disponíveis no momento. Também
+   vale explicar que a carga é rápida até 80% da bateria e desacelera bastante depois disso.
+4. Tirar dúvidas gerais sobre a plataforma e sobre carros elétricos/recarga em geral.
+
+FORMATO DA RESPOSTA: estruture com tópicos usando "-" para listas e "**texto**" para
+destacar nomes de lojas, carregadores ou valores importantes, sempre que isso deixar a
+resposta mais organizada e fácil de escanear visualmente. Seja breve e direto — no máximo
+4-5 frases de texto corrido, além dos tópicos quando houver.
+{contexto_pessoal}"""
 
 
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def api_chat():
-    if anthropic_client is None:
+    if gemini_client is None:
         return jsonify({
-            "erro": "O assistente ainda não foi configurado. Peça para o administrador definir a ANTHROPIC_API_KEY.",
+            "erro": "O assistente ainda não foi configurado. Verifique se a GOOGLE_API_KEY está definida no .env.",
         }), 503
 
     dados = request.get_json(silent=True) or {}
@@ -670,23 +921,25 @@ def api_chat():
         return jsonify({"erro": "Envie uma mensagem."}), 400
 
     usuario = usuario_atual()
-    contexto_pessoal = f" O usuário logado se chama {usuario.nome}."
-    if usuario.veiculo:
-        marca = usuario.veiculo.marca or ""
-        modelo = usuario.veiculo.modelo or ""
-        if marca or modelo:
-            contexto_pessoal += f" O veículo cadastrado dele é um {marca} {modelo}.".strip()
+    system_prompt = _montar_system_prompt(usuario)
+
+    historico_convertido = []
+    for msg in mensagens[-12:]:
+        papel = "model" if msg.get("role") == "assistant" else "user"
+        historico_convertido.append({"role": papel, "parts": [{"text": msg.get("content", "")}]})
 
     try:
-        resposta = anthropic_client.messages.create(
+        resposta = gemini_client.models.generate_content(
             model=CHAT_MODELO,
-            max_tokens=300,
-            system=CHAT_SYSTEM_PROMPT + contexto_pessoal,
-            messages=mensagens[-10:],  # limita o histórico enviado, controla custo
+            contents=historico_convertido,
+            config={
+                "system_instruction": system_prompt,
+                "max_output_tokens": 400,
+            },
         )
-        texto_resposta = resposta.content[0].text
-        return jsonify({"resposta": texto_resposta})
-    except Exception:
+        return jsonify({"resposta": resposta.text})
+    except Exception as erro:
+        app.logger.error(f"Erro ao chamar a API do Gemini: {erro}")
         return jsonify({"erro": "Não foi possível falar com o assistente agora. Tente novamente em instantes."}), 502
 
 

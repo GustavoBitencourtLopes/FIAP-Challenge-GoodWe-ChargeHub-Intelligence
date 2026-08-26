@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
-
 <body>
 
   <div class="blob blob-1"></div>
@@ -46,14 +44,14 @@
     <a href="/carregamento" class="painel-card">
       <div class="card-number">03</div>
       <h3>Fazer carregamento</h3>
-      <p>Simule uma sessão, veja o preço e finalize o pagamento.</p>
+      <p>Escolha um posto, simule a sessão e finalize o pagamento.</p>
     </a>
     {% else %}
     <a href="#" class="painel-card disabled">
       <span class="status-tag em-breve">cadastre um veículo</span>
       <div class="card-number">03</div>
       <h3>Fazer carregamento</h3>
-      <p>Simule uma sessão, veja o preço e finalize o pagamento.</p>
+      <p>Escolha um posto, simule a sessão e finalize o pagamento.</p>
     </a>
     {% endif %}
 
@@ -63,12 +61,27 @@
       <p>Veja suas sessões de carregamento anteriores, com data, valor e pagamento.</p>
     </a>
 
-    <a href="#" class="painel-card disabled">
-      <span class="status-tag em-breve">em breve</span>
+    <a href="/relatorios-ia" class="painel-card">
       <div class="card-number">05</div>
       <h3>Relatórios &amp; IA</h3>
-      <p>Acompanhe previsões de demanda, padrões de uso e recomendações inteligentes.</p>
+      <p>Converse com o assistente sobre horários, lojas e carregadores.</p>
     </a>
+
+    {% if usuario.vip %}
+    <a href="/vip" class="painel-card vip-card">
+      <span class="status-tag vip">VIP ativo</span>
+      <div class="card-number">06</div>
+      <h3>Você é VIP</h3>
+      <p>Acesso exclusivo ao posto de recarga mais rápido do outlet.</p>
+    </a>
+    {% else %}
+    <a href="/vip" class="painel-card pendente">
+      <span class="status-tag pendente">exclusivo</span>
+      <div class="card-number">06</div>
+      <h3>Seja VIP</h3>
+      <p>Assine e tenha acesso exclusivo ao posto de recarga mais rápido do outlet.</p>
+    </a>
+    {% endif %}
   </section>
 
   {% include 'partials/_footer.html' %}
@@ -76,5 +89,4 @@
 
   <script src="/static/js/main.js"></script>
 </body>
-
 </html>

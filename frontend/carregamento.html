@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fazer Carregamento · ChargeGrid Intelligence</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
-
 <body>
 
   <div class="blob blob-1"></div>
@@ -35,41 +33,41 @@
   <div class="sim-layout">
     <div class="sim-card">
       <h2>Sessão de recarga</h2>
-      <p class="subtitle">Informe o percentual atual e o percentual desejado. O resto o sistema calcula pra você.</p>
+      <p class="subtitle">Escolha o posto que você quer usar e informe o percentual atual e o desejado.</p>
+
+      <div class="charger-refresh">
+        <button type="button" class="btn btn-outline btn-sm" id="btn-atualizar-postos">Atualizar disponibilidade</button>
+      </div>
+
+      <div class="charger-select-grid" id="charger-select-grid">
+        <p class="subtitle">Carregando disponibilidade dos postos...</p>
+      </div>
 
       <form id="form-carregamento">
-        <div class="form-group">
-          <label for="percentual_atual">Percentual atual da bateria (%)</label>
-          <input type="number" id="percentual_atual" min="0" max="100" step="1" value="0" required>
-        </div>
-        <div class="form-group">
-          <label for="percentual_desejado">Até quantos % você quer carregar?</label>
-          <input type="number" id="percentual_desejado" min="1" max="100" step="1" placeholder="Ex: 80" required>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="percentual_atual">Percentual atual da bateria (%)</label>
+            <input type="number" id="percentual_atual" min="0" max="100" step="1" placeholder="Ex: 20" required>
+          </div>
+          <div class="form-group">
+            <label for="percentual_desejado">Até quantos % quer carregar?</label>
+            <input type="number" id="percentual_desejado" min="1" max="100" step="1" placeholder="Ex: 80" required>
+          </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-full" id="btn-iniciar">Ver disponibilidade e preço</button>
+        <button type="submit" class="btn btn-primary btn-full" id="btn-iniciar" disabled>Selecione um posto primeiro</button>
         <div id="mensagem" class="msg"></div>
       </form>
     </div>
 
-    <div class="sim-card" id="painel-resultado">
+    <div class="sim-card" id="painel-resultado" style="display: none;">
       <h2>Resultado da sessão</h2>
-      <p class="subtitle">Os dados aparecem aqui assim que você consultar a simulação.</p>
-
-      <div class="result-empty" id="resultado-vazio">
-        <div class="icon">⚡</div>
-        <p>Preencha o formulário ao lado para ver a lotação do outlet, tempo estimado e preço do carregamento.</p>
-      </div>
-
-      <div id="resultado-conteudo" style="display: none;"></div>
+      <div id="resultado-conteudo"></div>
     </div>
   </div>
 
-  <!-- MODAL DE PAGAMENTO -->
   <div class="modal-overlay" id="modal-pagamento">
-    <div class="modal-card" id="modal-conteudo">
-      <!-- Preenchido via JavaScript -->
-    </div>
+    <div class="modal-card" id="modal-conteudo"></div>
   </div>
 
   {% endif %}
@@ -84,23 +82,85 @@
     if (form) {
       const mensagem = document.getElementById('mensagem');
       const btnIniciar = document.getElementById('btn-iniciar');
-      const resultadoVazio = document.getElementById('resultado-vazio');
+      const painelResultado = document.getElementById('painel-resultado');
       const resultadoConteudo = document.getElementById('resultado-conteudo');
+      const chargerGrid = document.getElementById('charger-select-grid');
+      const btnAtualizarPostos = document.getElementById('btn-atualizar-postos');
       const modalOverlay = document.getElementById('modal-pagamento');
       const modalConteudo = document.getElementById('modal-conteudo');
 
       let sessaoAtualId = null;
       let valorAtual = 0;
+      let pixTimerInterval = null;
+      let carregadorSelecionadoId = null;
+
+      async function carregarPostos() {
+        chargerGrid.innerHTML = '<p class="subtitle">Carregando disponibilidade dos postos...</p>';
+        carregadorSelecionadoId = null;
+        btnIniciar.disabled = true;
+        btnIniciar.textContent = 'Selecione um posto primeiro';
+
+        try {
+          const resposta = await fetch('/api/carregamento/postos');
+          const r = await resposta.json();
+
+          chargerGrid.innerHTML = r.postos.map(posto => {
+            const bloqueado = !posto.selecionavel;
+            let statusTag = '';
+            if (posto.bloqueado_vip) {
+              statusTag = `<span class="vip-lock-tag">🔒 Exclusivo VIP · <a href="/vip">assine aqui</a></span>`;
+            } else if (posto.status === 'disponivel') {
+              statusTag = '<span class="charger-status-tag disponivel">Disponível</span>';
+            } else if (posto.status === 'manutencao') {
+              statusTag = '<span class="charger-status-tag manutencao">Em manutenção</span>';
+            } else {
+              statusTag = '<span class="charger-status-tag ocupado">Ocupado</span>';
+            }
+
+            return `
+              <div class="charger-option ${bloqueado ? 'bloqueado' : ''}" data-id="${posto.id}" data-bloqueado="${bloqueado}">
+                <span class="charger-nome">${posto.tipo}</span>
+                <span class="charger-potencia">${posto.potencia_kw} kW</span>
+                ${statusTag}
+              </div>
+            `;
+          }).join('');
+
+          chargerGrid.querySelectorAll('.charger-option').forEach(el => {
+            if (el.dataset.bloqueado === 'true') return;
+            el.addEventListener('click', () => {
+              chargerGrid.querySelectorAll('.charger-option').forEach(o => o.classList.remove('selecionado'));
+              el.classList.add('selecionado');
+              carregadorSelecionadoId = parseInt(el.dataset.id);
+              btnIniciar.disabled = false;
+              btnIniciar.textContent = 'Ver disponibilidade e preço';
+            });
+          });
+        } catch (err) {
+          chargerGrid.innerHTML = '<p class="subtitle">Não foi possível carregar os postos. Tente atualizar.</p>';
+        }
+      }
+
+      carregarPostos();
+      btnAtualizarPostos.addEventListener('click', carregarPostos);
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         mensagem.className = 'msg';
+
+        if (!carregadorSelecionadoId) {
+          mensagem.textContent = 'Selecione um posto de carregamento.';
+          mensagem.className = 'msg erro';
+          return;
+        }
+
         btnIniciar.disabled = true;
         btnIniciar.textContent = 'Consultando...';
 
         const dados = {
           percentual_atual: document.getElementById('percentual_atual').value,
           percentual_desejado: document.getElementById('percentual_desejado').value,
+          carregador_id: carregadorSelecionadoId,
         };
 
         try {
@@ -120,48 +180,45 @@
           sessaoAtualId = r.sessao_id;
           valorAtual = r.valor_final;
 
-          let barraPostos = r.status_postos
-            .map(s => `<div class="charger-dot ${s === 'disponivel' ? 'disponivel' : 'ocupado'}"></div>`)
-            .join('');
-          for (let i = 0; i < r.postos_em_manutencao; i++) {
-            barraPostos += `<div class="charger-dot manutencao"></div>`;
-          }
-
           const tarifaPicoLinha = r.horario_pico
-            ? `<div class="price-row pico">
-                 <span class="price-label">Taxa de horário de pico</span>
-                 <span class="price-value">+ R$ ${r.taxa_pico_kwh.toFixed(2)}/kWh</span>
-               </div>`
+            ? `<div class="price-row pico"><span class="price-label">Taxa de horário de pico</span><span class="price-value">+ R$ ${r.taxa_pico_kwh.toFixed(2)}/kWh</span></div>`
+            : '';
+          const descontoLinha = r.desconto > 0
+            ? `<div class="price-row desconto"><span class="price-label">Desconto (baixa demanda)</span><span class="price-value">- R$ ${r.desconto.toFixed(2)}</span></div>`
             : '';
 
-          const descontoLinha = r.desconto > 0
-            ? `<div class="price-row desconto">
-                 <span class="price-label">Desconto (baixa demanda)</span>
-                 <span class="price-value">- R$ ${r.desconto.toFixed(2)}</span>
-               </div>`
-            : '';
+          const ofertasHtml = r.ofertas.map(oferta => `
+            <div class="oferta-card"
+                 data-loja="${oferta.loja}"
+                 data-categoria="${oferta.categoria}"
+                 data-descricao="${oferta.descricao}"
+                 data-codigo="${oferta.codigo}">
+              <div class="oferta-info">
+                <div class="oferta-loja">${oferta.loja}</div>
+                <div class="oferta-categoria">${oferta.categoria}</div>
+                <div class="oferta-descricao">${oferta.descricao}</div>
+                <div class="oferta-codigo">Código: ${oferta.codigo} · válido por ~${oferta.validade_min} min</div>
+              </div>
+              <button class="oferta-resgatar">Resgatar</button>
+            </div>
+          `).join('');
 
           resultadoConteudo.innerHTML = `
             <span class="demand-badge ${r.lotacao_classe}">Outlet: ${r.lotacao_label}${r.horario_pico ? ' · Horário de pico' : ''}</span>
-
-            <p class="subtitle" style="margin-top:-6px;">
-              ${r.postos_operacionais} de ${r.postos_total} postos funcionando
-              ${r.postos_em_manutencao > 0 ? `(${r.postos_em_manutencao} em manutenção)` : ''}
-            </p>
-            <div class="chargers-row">${barraPostos}</div>
-            <p class="subtitle" style="margin-top:-6px; margin-bottom:18px;">
-              ${r.postos_disponiveis} disponíveis · ${r.postos_ocupados} ocupados
+            <p class="subtitle" style="margin-top:-6px; margin-bottom:16px;">
+              Você está usando: <strong>${r.carregador_tipo}</strong> (${r.carregador_potencia_kw} kW) ·
+              ${r.postos_disponiveis} outros postos disponíveis de ${r.postos_total}
             </p>
 
-            <div class="info-box horario">🕐 ${r.sugestao_horario}</div>
+            <div class="info-box horario">${r.sugestao_horario}</div>
 
             <div class="stat-grid">
               <div class="stat-box">
-                <div class="stat-label">Energia necessária</div>
+                <div class="stat-label">Energia</div>
                 <div class="stat-value">${r.energia_kwh} kWh</div>
               </div>
               <div class="stat-box highlight">
-                <div class="stat-label">Tempo total estimado</div>
+                <div class="stat-label">Tempo total</div>
                 <div class="stat-value">${r.tempo_total_min} min</div>
               </div>
               <div class="stat-box">
@@ -169,7 +226,7 @@
                 <div class="stat-value">${r.tempo_carregamento_min} min</div>
               </div>
               <div class="stat-box">
-                <div class="stat-label">Tempo de espera</div>
+                <div class="stat-label">Espera</div>
                 <div class="stat-value">${r.tempo_espera_min} min</div>
               </div>
             </div>
@@ -185,24 +242,52 @@
                 <span class="price-value">R$ ${r.valor_total.toFixed(2)}</span>
               </div>
               ${descontoLinha}
-              <div class="price-row total">
-                <span class="price-label">Valor final</span>
-                <span class="price-value">R$ ${r.valor_final.toFixed(2)}</span>
-              </div>
             </div>
 
-            <div class="info-box recomendacao">💡 ${r.recomendacao}</div>
-            <div class="info-box cupom">🎁 Enquanto espera: ${r.dica_cupom}</div>
+            <div class="checkout-bar">
+              <div>
+                <div class="checkout-label">Valor final</div>
+                <div class="checkout-value">R$ ${r.valor_final.toFixed(2)}</div>
+              </div>
+              <button class="btn btn-primary" id="btn-abrir-pagamento">Ir para pagamento</button>
+            </div>
 
-            <button class="btn btn-primary btn-full" id="btn-abrir-pagamento">
-              Ir para pagamento · R$ ${r.valor_final.toFixed(2)}
-            </button>
+            <div class="info-box recomendacao">${r.recomendacao}</div>
+
+            <div class="ofertas-heading">Aproveite a espera — ofertas do outlet</div>
+            <div class="ofertas-grid">${ofertasHtml}</div>
           `;
 
-          resultadoVazio.style.display = 'none';
-          resultadoConteudo.style.display = 'block';
+          painelResultado.style.display = 'block';
+          painelResultado.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
           document.getElementById('btn-abrir-pagamento').addEventListener('click', abrirModalEscolhaPagamento);
+
+          resultadoConteudo.querySelectorAll('.oferta-resgatar').forEach(botao => {
+            botao.addEventListener('click', async () => {
+              const card = botao.closest('.oferta-card');
+              botao.disabled = true;
+              botao.textContent = 'Resgatando...';
+
+              try {
+                await fetch('/api/cupons/resgatar', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    loja: card.dataset.loja,
+                    categoria: card.dataset.categoria,
+                    descricao: card.dataset.descricao,
+                    codigo: card.dataset.codigo,
+                  }),
+                });
+                botao.textContent = '✓ Resgatado';
+                botao.classList.add('resgatado');
+              } catch (err) {
+                botao.disabled = false;
+                botao.textContent = 'Tentar novamente';
+              }
+            });
+          });
 
         } catch (err) {
           mensagem.textContent = 'Erro de conexão com o servidor.';
@@ -213,52 +298,39 @@
         }
       });
 
-      // ---------------------------------------------------------------
-      // MODAL DE PAGAMENTO
-      // ---------------------------------------------------------------
-
-      function abrirModal() {
-        modalOverlay.classList.add('aberto');
-      }
-
+      function abrirModal() { modalOverlay.classList.add('aberto'); }
       function fecharModal() {
         modalOverlay.classList.remove('aberto');
+        if (pixTimerInterval) clearInterval(pixTimerInterval);
       }
 
-      modalOverlay.addEventListener('click', (e) => {
-        if (e.target === modalOverlay) fecharModal();
-      });
+      modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) fecharModal(); });
+
+      function detectarBandeira(numero) {
+        const limpo = numero.replace(/\s/g, '');
+        if (/^4/.test(limpo)) return 'Visa';
+        if (/^5/.test(limpo)) return 'Mastercard';
+        if (/^3/.test(limpo)) return 'Amex';
+        return '';
+      }
+
+      function calcularParcelas(valor) {
+        const opcoes = [];
+        for (let n = 1; n <= 3; n++) opcoes.push(`<option value="${n}">${n}x de R$ ${(valor / n).toFixed(2)} sem juros</option>`);
+        return opcoes.join('');
+      }
 
       function abrirModalEscolhaPagamento() {
         modalConteudo.innerHTML = `
           <h3>Forma de pagamento</h3>
           <p class="subtitle">Total a pagar: <strong>R$ ${valorAtual.toFixed(2)}</strong></p>
-
           <div class="payment-methods">
-            <label class="payment-method-option" data-metodo="cartao_credito">
-              <input type="radio" name="metodo" value="cartao_credito">
-              <span class="method-icon">💳</span>
-              <span class="method-label">Cartão de crédito</span>
-            </label>
-            <label class="payment-method-option" data-metodo="cartao_debito">
-              <input type="radio" name="metodo" value="cartao_debito">
-              <span class="method-icon">💳</span>
-              <span class="method-label">Cartão de débito</span>
-            </label>
-            <label class="payment-method-option" data-metodo="pix">
-              <input type="radio" name="metodo" value="pix">
-              <span class="method-icon">🔑</span>
-              <span class="method-label">Pix</span>
-            </label>
-            <label class="payment-method-option" data-metodo="carteira_digital">
-              <input type="radio" name="metodo" value="carteira_digital">
-              <span class="method-icon">📱</span>
-              <span class="method-label">Carteira digital</span>
-            </label>
+            <label class="payment-method-option" data-metodo="cartao_credito"><input type="radio" name="metodo" value="cartao_credito"><span class="method-label">Cartão de crédito</span></label>
+            <label class="payment-method-option" data-metodo="cartao_debito"><input type="radio" name="metodo" value="cartao_debito"><span class="method-label">Cartão de débito</span></label>
+            <label class="payment-method-option" data-metodo="pix"><input type="radio" name="metodo" value="pix"><span class="method-label">Pix</span></label>
+            <label class="payment-method-option" data-metodo="carteira_digital"><input type="radio" name="metodo" value="carteira_digital"><span class="method-label">Carteira digital</span></label>
           </div>
-
           <div id="detalhe-metodo"></div>
-
           <div class="modal-actions">
             <button type="button" class="btn btn-outline btn-full" id="btn-cancelar-pagamento">Cancelar</button>
             <button type="button" class="btn btn-primary btn-full" id="btn-confirmar-pagamento" disabled>Continuar</button>
@@ -281,51 +353,81 @@
             opcao.classList.add('selecionado');
             opcao.querySelector('input').checked = true;
             btnConfirmar.disabled = false;
-
             const metodo = opcao.dataset.metodo;
 
             if (metodo === 'cartao_credito' || metodo === 'cartao_debito') {
               detalheMetodo.innerHTML = `
                 <div class="form-group">
-                  <label>Número do cartão</label>
-                  <input type="text" id="cartao_numero" placeholder="0000 0000 0000 0000" maxlength="19">
+                  <label>Número do cartão <span class="brand-icon" id="bandeira-cartao"></span></label>
+                  <input type="text" id="cartao_numero" placeholder="0000 0000 0000 0000" maxlength="19" inputmode="numeric">
                 </div>
                 <div class="form-row">
-                  <div class="form-group">
-                    <label>Validade</label>
-                    <input type="text" id="cartao_validade" placeholder="MM/AA" maxlength="5">
-                  </div>
-                  <div class="form-group">
-                    <label>CVV</label>
-                    <input type="text" id="cartao_cvv" placeholder="123" maxlength="3">
-                  </div>
+                  <div class="form-group"><label>Validade</label><input type="text" id="cartao_validade" placeholder="MM/AA" maxlength="5" inputmode="numeric"></div>
+                  <div class="form-group"><label>CVV</label><input type="text" id="cartao_cvv" placeholder="123" maxlength="3" inputmode="numeric"></div>
                 </div>
-                <div class="form-group">
-                  <label>Nome no cartão</label>
-                  <input type="text" id="cartao_nome" placeholder="Como está impresso no cartão">
-                </div>
+                <div class="form-group"><label>Nome no cartão</label><input type="text" id="cartao_nome" placeholder="Como está impresso no cartão"></div>
+                <div class="form-group"><label>CPF do titular</label><input type="text" id="cliente_cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"></div>
+                ${metodo === 'cartao_credito' ? `<div class="form-group installments-select"><label>Parcelamento</label><select id="parcelas">${calcularParcelas(valorAtual)}</select></div>` : ''}
               `;
+
+              document.getElementById('cartao_numero').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                e.target.value = v.replace(/(.{4})/g, '$1 ').trim();
+                document.getElementById('bandeira-cartao').textContent = detectarBandeira(v);
+              });
+              document.getElementById('cartao_validade').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
+                e.target.value = v;
+              });
+              document.getElementById('cartao_cvv').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3); });
+              document.getElementById('cliente_cpf').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                e.target.value = v;
+              });
+
             } else if (metodo === 'pix') {
-              const codigoFalso = 'chargegrid.pix.' + Math.random().toString(36).substring(2, 18);
+              const codigoFalso = '00020126580014BR.GOV.BCB.PIX0136chargegrid-' + Math.random().toString(36).substring(2, 12);
               detalheMetodo.innerHTML = `
                 <div class="pix-box">
                   <div class="pix-qr-placeholder"></div>
                   <div class="pix-code">${codigoFalso}</div>
-                  <p class="subtitle" style="margin-bottom:0;">Escaneie o QR Code ou copie o código acima no app do seu banco.</p>
+                  <p class="subtitle" style="margin-bottom:0;">Escaneie o QR Code ou copie o código no app do seu banco.</p>
+                  <div class="pix-timer" id="pix-timer">09:59</div>
                 </div>
+                <div class="form-group"><label>CPF do titular</label><input type="text" id="cliente_cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"></div>
               `;
+              document.getElementById('cliente_cpf').addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                e.target.value = v;
+              });
+
+              let segundosRestantes = 599;
+              const timerEl = document.getElementById('pix-timer');
+              if (pixTimerInterval) clearInterval(pixTimerInterval);
+              pixTimerInterval = setInterval(() => {
+                segundosRestantes--;
+                const min = String(Math.floor(segundosRestantes / 60)).padStart(2, '0');
+                const seg = String(segundosRestantes % 60).padStart(2, '0');
+                if (timerEl) timerEl.textContent = `${min}:${seg}`;
+                if (segundosRestantes <= 0) clearInterval(pixTimerInterval);
+              }, 1000);
+
+              btnConfirmar.textContent = 'Já paguei';
             } else if (metodo === 'carteira_digital') {
-              detalheMetodo.innerHTML = `
-                <p class="subtitle">Confirme o pagamento usando a carteira digital do seu dispositivo.</p>
-              `;
+              detalheMetodo.innerHTML = `<p class="subtitle">Confirme o pagamento usando a carteira digital do seu dispositivo.</p>`;
+              btnConfirmar.textContent = 'Confirmar com um toque';
             }
+
+            if (metodo !== 'pix' && metodo !== 'carteira_digital') btnConfirmar.textContent = 'Continuar';
           });
         });
 
         btnConfirmar.addEventListener('click', () => {
           const metodoSelecionado = modalConteudo.querySelector('input[name="metodo"]:checked');
           const mensagemModal = modalConteudo.querySelector('#mensagem-modal');
-
           if (!metodoSelecionado) return;
           const metodo = metodoSelecionado.value;
 
@@ -334,25 +436,37 @@
             const validade = document.getElementById('cartao_validade').value.trim();
             const cvv = document.getElementById('cartao_cvv').value.trim();
             const nome = document.getElementById('cartao_nome').value.trim();
-
-            if (!numero || !validade || !cvv || !nome) {
-              mensagemModal.textContent = 'Preencha todos os dados do cartão.';
+            const cpf = document.getElementById('cliente_cpf').value.trim();
+            if (!numero || numero.replace(/\s/g, '').length < 16 || !validade || validade.length < 5 || !cvv || cvv.length < 3 || !nome || !cpf) {
+              mensagemModal.textContent = 'Preencha todos os dados do cartão corretamente.';
+              mensagemModal.className = 'msg erro';
+              return;
+            }
+          } else if (metodo === 'pix') {
+            const cpf = document.getElementById('cliente_cpf').value.trim();
+            if (!cpf) {
+              mensagemModal.textContent = 'Informe o CPF do titular.';
               mensagemModal.className = 'msg erro';
               return;
             }
           }
 
-          confirmarPagamento(metodo);
+          iniciarProcessamento(metodo);
         });
       }
 
+      function iniciarProcessamento(metodo) {
+        modalConteudo.innerHTML = `
+          <div class="processing-overlay">
+            <div class="spinner"></div>
+            <h3>Processando pagamento...</h3>
+            <p class="subtitle" style="margin-bottom:0;">Estamos confirmando com a instituição financeira.</p>
+          </div>
+        `;
+        setTimeout(() => confirmarPagamento(metodo), 1600);
+      }
+
       async function confirmarPagamento(metodo) {
-        const btnConfirmar = modalConteudo.querySelector('#btn-confirmar-pagamento');
-        const mensagemModal = modalConteudo.querySelector('#mensagem-modal');
-
-        btnConfirmar.disabled = true;
-        btnConfirmar.textContent = 'Processando...';
-
         try {
           const resposta = await fetch(`/api/carregamento/${sessaoAtualId}/pagar`, {
             method: 'POST',
@@ -362,42 +476,55 @@
           const resultado = await resposta.json();
 
           if (!resposta.ok) {
-            mensagemModal.textContent = resultado.erro || 'Não foi possível confirmar o pagamento.';
-            mensagemModal.className = 'msg erro';
-            btnConfirmar.disabled = false;
-            btnConfirmar.textContent = 'Continuar';
+            modalConteudo.innerHTML = `
+              <div class="payment-success">
+                <div class="icon">⚠️</div>
+                <h3>Não foi possível confirmar</h3>
+                <p class="subtitle">${resultado.erro || 'Tente novamente.'}</p>
+                <button class="btn btn-outline btn-full" id="btn-fechar-erro">Fechar</button>
+              </div>
+            `;
+            document.getElementById('btn-fechar-erro').addEventListener('click', fecharModal);
             return;
           }
+
+          const agora = new Date();
+          const cartaoNumero = document.getElementById('cartao_numero');
+          const ultimosDigitos = cartaoNumero ? cartaoNumero.value.replace(/\s/g, '').slice(-4) : null;
+          const parcelasEl = document.getElementById('parcelas');
+          const parcelas = parcelasEl ? parseInt(parcelasEl.value) : 1;
 
           modalConteudo.innerHTML = `
             <div class="payment-success">
               <div class="icon">✅</div>
               <h3>Pagamento aprovado!</h3>
-              <p class="subtitle">Pago via ${resultado.forma_pagamento_label} · R$ ${valorAtual.toFixed(2)}</p>
-              <button class="btn btn-success btn-full" id="btn-fechar-sucesso">Fechar</button>
+              <p class="subtitle">Pago via ${resultado.forma_pagamento_label}</p>
+              <div class="receipt-box">
+                <div class="receipt-row"><span class="receipt-label">Pedido</span><span>#${sessaoAtualId.toString().padStart(6, '0')}</span></div>
+                <div class="receipt-row"><span class="receipt-label">Data</span><span>${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span></div>
+                <div class="receipt-row"><span class="receipt-label">Forma de pagamento</span><span>${resultado.forma_pagamento_label}${ultimosDigitos ? ' •••• ' + ultimosDigitos : ''}</span></div>
+                ${parcelasEl ? `<div class="receipt-row"><span class="receipt-label">Parcelamento</span><span>${parcelas}x de R$ ${(valorAtual / parcelas).toFixed(2)}</span></div>` : ''}
+                <div class="receipt-row receipt-total"><span class="receipt-label">Total pago</span><span>R$ ${valorAtual.toFixed(2)}</span></div>
+              </div>
+              <p class="subtitle" style="margin-bottom:0;">Redirecionando para o seu histórico...</p>
             </div>
           `;
 
-          document.getElementById('btn-fechar-sucesso').addEventListener('click', () => {
-            fecharModal();
-            const botaoOriginal = document.getElementById('btn-abrir-pagamento');
-            if (botaoOriginal) {
-              botaoOriginal.textContent = '✓ Sessão paga';
-              botaoOriginal.classList.remove('btn-primary');
-              botaoOriginal.classList.add('btn-success');
-              botaoOriginal.disabled = true;
-            }
-          });
+          setTimeout(() => { window.location.href = resultado.redirect || '/historico'; }, 2200);
 
         } catch (err) {
-          mensagemModal.textContent = 'Erro de conexão com o servidor.';
-          mensagemModal.className = 'msg erro';
-          btnConfirmar.disabled = false;
-          btnConfirmar.textContent = 'Continuar';
+          modalConteudo.innerHTML = `
+            <div class="payment-success">
+              <div class="icon">⚠️</div>
+              <h3>Erro de conexão</h3>
+              <p class="subtitle">Não foi possível falar com o servidor.</p>
+              <button class="btn btn-outline btn-full" id="btn-fechar-erro">Fechar</button>
+            </div>
+          `;
+          document.getElementById('btn-fechar-erro').addEventListener('click', fecharModal);
         }
       }
     }
   </script>
 </body>
-
 </html>

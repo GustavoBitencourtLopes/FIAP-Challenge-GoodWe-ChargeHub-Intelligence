@@ -6,12 +6,27 @@
   </a>
 
   <div class="nav-links">
-    <a href="/painel" class="active">Painel</a>
-    <a href="/#como-funciona">Como funciona</a>
+    <a href="/painel" class="{{ 'active' if pagina_atual == 'painel' else '' }}">
+      <span class="nav-label">Painel</span>
+    </a>
+    <a href="/carregamento" class="{{ 'active' if pagina_atual == 'carregamento' else '' }}">
+      <span class="nav-label">Carregar</span>
+    </a>
+    <a href="/meus-veiculos" class="{{ 'active' if pagina_atual == 'veiculo' else '' }}">
+      <span class="nav-label">Meu veículo</span>
+    </a>
+    <a href="/historico" class="{{ 'active' if pagina_atual == 'historico' else '' }}">
+      <span class="nav-label">Histórico</span>
+    </a>
+    <a href="/relatorios-ia" class="{{ 'active' if pagina_atual == 'ia' else '' }}">
+      <span class="nav-label">IA</span>
+    </a>
   </div>
 
   <div class="nav-actions">
-    <div class="profile-icon">👤</div>
+    <a href="/minha-conta" class="profile-icon {{ 'vip' if usuario and usuario.vip else '' }}" title="{{ usuario.nome if usuario else '' }}">
+      {{ usuario.nome[0]|upper if usuario and usuario.nome else '?' }}
+    </a>
     <button id="btn-sair" class="btn btn-outline btn-sm">Sair</button>
     <button class="nav-toggle" aria-label="Abrir menu">
       <span></span><span></span><span></span>
