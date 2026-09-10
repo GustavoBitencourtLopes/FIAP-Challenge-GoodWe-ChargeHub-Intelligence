@@ -183,10 +183,13 @@ Projeto desenvolvido para o **FIAP EV Challenge 2026**, em parceria com a **Good
 
 ---
 
-## 👤 Autor
+## 👤 Autores
 
-**Gustavo Bitencourt Lopes**
-Estudante de Ciência da Computação — FIAP
+**Gustavo Bitencourt Lopes** - Líder do grupo
+**Leonardo Takachi**
+**Daniel Vieira**
+**Giovani Salazar**
+
 
 ---
 
