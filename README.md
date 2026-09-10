@@ -1,4 +1,4 @@
-# ⚡ ChargeGrid Intelligence
+#  ChargeGrid Intelligence
 
 > Simulador inteligente de uma rede de carregadores de veículos elétricos em ambientes comerciais, desenvolvido para o **FIAP EV Challenge 2026**, em parceria com a **GoodWe**.
 
@@ -6,7 +6,7 @@ Projeto do 1º ano presencial — foco no setor comercial e varejo (outlets), co
 
 🔗 **Demo ao vivo**: [fiap-challenge-goodwe-chargehub.onrender.com](https://fiap-challenge-goodwe-chargehub.onrender.com)
 
-> ⚠️ O projeto está hospedado no plano gratuito do Render. Se o site estiver "dormindo" por inatividade, o primeiro carregamento pode levar de 30 a 50 segundos. Além disso, o banco de dados é reiniciado a cada novo deploy — os dados cadastrados não são permanentes.
+> ⚠️ O projeto está hospedado no plano gratuito do Render. Se o site estiver "dormindo" por inatividade, o primeiro carregamento pode levar de 30 a 50 segundos. 
 
 ---
 
