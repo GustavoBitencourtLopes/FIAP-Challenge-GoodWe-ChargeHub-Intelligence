@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Corporativo · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    {% include 'partials/_navbar_minima.html' %}
+
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <span class="badge-step">ACESSO CORPORATIVO</span>
+            <h2>Painel do gestor</h2>
+            <p class="subtitle">Área restrita para gestores do outlet acompanharem a operação.</p>
+
+            <form id="form-login-gestor">
+                <div class="form-group">
+                    <label for="usuario">Usuário</label>
+                    <input type="text" id="usuario" name="usuario" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="senha">Senha</label>
+                    <input type="password" id="senha" name="senha" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Entrar</button>
+                <div id="mensagem" class="msg"></div>
+            </form>
+
+            <p class="footer-link">Não é um gestor? <a href="/login">Voltar ao login do cliente</a></p>
+        </div>
+    </div>
+
+    {% include 'partials/_footer.html' %}
+
+    <script>
+        const form = document.getElementById('form-login-gestor');
+        const mensagem = document.getElementById('mensagem');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            mensagem.className = 'msg';
+
+            // O backend reaproveita o mesmo endpoint de login do cliente — o
+            // campo "email" ali é só o nome interno do campo, mas aceita
+            // qualquer identificador, incluindo "gestor" sem formato de email.
+            const dados = {
+                email: document.getElementById('usuario').value,
+                senha: document.getElementById('senha').value,
+            };
+
+            try {
+                const resposta = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados),
+                });
+                const resultado = await resposta.json();
+
+                if (!resposta.ok) {
+                    mensagem.textContent = resultado.erro || 'Usuário ou senha inválidos.';
+                    mensagem.className = 'msg erro';
+                    return;
+                }
+
+                mensagem.textContent = resultado.mensagem;
+                mensagem.className = 'msg sucesso';
+                window.location.href = resultado.redirect || '/';
+            } catch (err) {
+                mensagem.textContent = 'Erro de conexão com o servidor.';
+                mensagem.className = 'msg erro';
+            }
+        });
+    </script>
+
+</body>
+
+</html>

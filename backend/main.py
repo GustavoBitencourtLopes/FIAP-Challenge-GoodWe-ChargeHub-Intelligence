@@ -6,7 +6,7 @@ Backend do ChargeGrid Intelligence.
 Fluxo de onboarding:
 1. /cadastro         -> cria a conta (nome, email, senha) e já loga o usuário.
 2. /cadastro-veiculo -> tela de escolha: cadastrar o veículo agora ou mais tarde.
-3. /painel           -> as áreas do sistema.
+3. /painel           -> as áreas do sistema (cliente).
 4. /meus-veiculos, /veiculo/<id>, /veiculo/<id>/editar -> gestão do veículo.
 5. /carregamento     -> o usuário ESCOLHE manualmente qual posto usar (o
    sistema mostra o status ao vivo dos 4 postos) e simula a sessão.
@@ -15,6 +15,11 @@ Fluxo de onboarding:
 7. /historico        -> histórico de sessões de carregamento do usuário.
 8. /relatorios-ia    -> assistente virtual (chat) via Google Gemini.
 9. /vip              -> assinatura VIP, que libera o posto DC Rápido 60kW.
+10. /login-gestor    -> tela de login separada para a conta de gestor
+    (usuário "gestor", senha "123") — acessível pelo link "Login corporativo"
+    na tela de login normal.
+11. /gestor/painel   -> painel do gestor do outlet (só para contas do tipo
+    "gestor"): KPIs, demanda, tarifação, faturamento, cupons.
 
 SISTEMA INTELIGENTE (regras, sem custo de API):
 - Detecta horário de pico pelo relógio real (fuso de São Paulo).
@@ -26,10 +31,6 @@ SISTEMA INTELIGENTE (regras, sem custo de API):
 - Gera de 2 a 3 ofertas comerciais de lojas do outlet a cada sessão, que
   o usuário pode resgatar (fica salvo em "Meus cupons", na tela de conta).
 
-CHATBOT / ASSISTENTE (IA generativa real, via Google Gemini):
-A página /relatorios-ia usa um modelo de linguagem (Gemini 3.5 Flash-Lite,
-camada gratuita permanente) para responder perguntas livres do usuário.
-
 Banco de dados: SQLite local por enquanto (facilita o desenvolvimento).
 A estrutura das tabelas já é compatível com database/schema.sql, que
 será usado quando migrarmos para PostgreSQL.
@@ -39,10 +40,7 @@ Em produção, quem roda esta aplicação é o gunicorn, que apenas IMPORTA
 este arquivo e usa a variável `app` — o bloco `if __name__ == "__main__"`
 não é executado. A criação das tabelas (`db.create_all()`) acontece fora
 desse bloco. A variável GOOGLE_API_KEY precisa ser configurada nas
-variáveis de ambiente do Render TAMBÉM (Settings -> Environment) —
-o arquivo .env local NÃO é enviado para o Render, então se você quer
-que a IA funcione no site publicado, precisa configurar a chave lá
-separadamente, do mesmo jeito que fez no .env local.
+variáveis de ambiente do Render também (Settings -> Environment).
 
 NOTA SOBRE FUSO HORÁRIO: o horário de pico é calculado usando o fuso de
 São Paulo, com fallback de segurança caso o "tzdata" não esteja
@@ -91,18 +89,13 @@ if genai is not None and GOOGLE_API_KEY:
 # ---------------------------------------------------------------------------
 # AVISO PERMANENTE DE STATUS DA IA (aparece toda vez que o servidor liga)
 # ---------------------------------------------------------------------------
-# Isso existe para você NUNCA MAIS precisar adivinhar se a chave carregou.
-# Olhe o terminal assim que rodar "python main.py" — a resposta já está ali.
 
 print("=" * 60)
 if genai is None:
-    print("STATUS DA IA: ❌ pacote 'google-genai' não está instalado.")
+    print("STATUS DA IA: ❌ pacote 'google-genai' não instalado.")
     print("  -> Rode: pip install -r backend/requirements.txt")
 elif not GOOGLE_API_KEY:
     print("STATUS DA IA: ❌ GOOGLE_API_KEY não encontrada no .env.")
-    print("  -> Confirme que existe um arquivo '.env' na RAIZ do projeto")
-    print("     (mesma pasta de 'backend/' e 'frontend/'), com a linha:")
-    print("     GOOGLE_API_KEY=sua_chave_aqui")
 else:
     print("STATUS DA IA: ✅ configurada e pronta para uso (Gemini).")
 print("=" * 60)
@@ -120,6 +113,7 @@ class Usuario(db.Model):
     email = db.Column(db.String(150), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
     vip = db.Column(db.Boolean, default=False)
+    tipo = db.Column(db.String(20), default="cliente")  # "cliente" ou "gestor"
 
     veiculo = db.relationship(
         "Veiculo", backref="usuario", uselist=False, cascade="all, delete-orphan"
@@ -205,9 +199,21 @@ class CupomResgatado(db.Model):
 with app.app_context():
     db.create_all()
 
+    # Conta de gestor criada automaticamente, para demonstração. Como o
+    # banco no Render é recriado a cada deploy, isso garante que essa
+    # conta sempre existe, sem precisar de um cadastro manual toda vez.
+    # Usa "gestor" (não um email) como identificador, para caber num
+    # campo de texto simples na tela de login corporativo.
+    if not Usuario.query.filter_by(email="gestor").first():
+        gestor_demo = Usuario(nome="Gestor do Outlet", email="gestor", tipo="gestor")
+        gestor_demo.set_senha("123")
+        db.session.add(gestor_demo)
+        db.session.commit()
+        print("Conta de gestor de demonstração criada: usuário 'gestor' / senha '123'")
+
 
 # ---------------------------------------------------------------------------
-# HELPER DE AUTENTICAÇÃO
+# HELPERS DE AUTENTICAÇÃO
 # ---------------------------------------------------------------------------
 
 def login_required(view_func):
@@ -218,6 +224,27 @@ def login_required(view_func):
         if not usuario_id or Usuario.query.get(usuario_id) is None:
             session.pop("usuario_id", None)
             return redirect(url_for("pagina_login"))
+
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def gestor_required(view_func):
+    """Bloqueia rotas do painel do gestor para quem não tem conta de gestor
+    (mesmo estando logado como cliente)."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        usuario_id = session.get("usuario_id")
+        usuario = Usuario.query.get(usuario_id) if usuario_id else None
+
+        if usuario is None:
+            session.pop("usuario_id", None)
+            return redirect(url_for("pagina_login"))
+
+        if usuario.tipo != "gestor":
+            return redirect(url_for("painel"))
 
         return view_func(*args, **kwargs)
 
@@ -246,7 +273,7 @@ def _formatar_data_br(dt_utc):
 
 
 # ---------------------------------------------------------------------------
-# ROTAS DE PÁGINA
+# ROTAS DE PÁGINA — CLIENTE
 # ---------------------------------------------------------------------------
 
 @app.route("/")
@@ -258,6 +285,11 @@ def tela_principal():
 @app.route("/login")
 def pagina_login():
     return render_template("login.html")
+
+
+@app.route("/login-gestor")
+def pagina_login_gestor():
+    return render_template("login_gestor.html")
 
 
 @app.route("/cadastro")
@@ -275,6 +307,10 @@ def pagina_cadastro_veiculo():
 @login_required
 def painel():
     usuario = usuario_atual()
+
+    if usuario.tipo == "gestor":
+        return redirect(url_for("painel_gestor"))
+
     return render_template(
         "painel.html",
         usuario=usuario,
@@ -391,6 +427,35 @@ def historico():
     ]
 
     return render_template("historico.html", sessoes=sessoes, usuario=usuario, pagina_atual="historico")
+
+
+# ---------------------------------------------------------------------------
+# ROTAS DE PÁGINA — GESTOR
+# ---------------------------------------------------------------------------
+
+@app.route("/gestor/painel")
+@gestor_required
+def painel_gestor():
+    sessoes_pagas = SessaoCarregamento.query.filter_by(pago=True).all()
+    total_sessoes_geral = SessaoCarregamento.query.count()
+
+    receita_total = sum(s.valor_final for s in sessoes_pagas)
+    numero_sessoes_pagas = len(sessoes_pagas)
+    ticket_medio = (receita_total / numero_sessoes_pagas) if numero_sessoes_pagas else 0
+
+    total_cupons_resgatados = CupomResgatado.query.count()
+    taxa_resgate = (total_cupons_resgatados / total_sessoes_geral * 100) if total_sessoes_geral else 0
+
+    return render_template(
+        "painel_gestor.html",
+        usuario=usuario_atual(),
+        receita_total=receita_total,
+        numero_sessoes_pagas=numero_sessoes_pagas,
+        ticket_medio=ticket_medio,
+        taxa_resgate=round(taxa_resgate, 1),
+        total_cupons_resgatados=total_cupons_resgatados,
+        pagina_atual="painel_gestor",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -850,7 +915,7 @@ def api_vip_cancelar():
 
 
 # ---------------------------------------------------------------------------
-# API - ASSISTENTE / CHATBOT (IA generativa real, via Google Gemini)
+# API - CHATBOT DO CLIENTE (Google Gemini)
 # ---------------------------------------------------------------------------
 
 CHAT_MODELO = "gemini-3.5-flash-lite"
@@ -988,7 +1053,8 @@ def api_login():
         return jsonify({"erro": "Email ou senha inválidos."}), 401
 
     session["usuario_id"] = usuario.id
-    return jsonify({"mensagem": "Login realizado com sucesso.", "redirect": url_for("painel")})
+    destino = "painel_gestor" if usuario.tipo == "gestor" else "painel"
+    return jsonify({"mensagem": "Login realizado com sucesso.", "redirect": url_for(destino)})
 
 
 @app.route("/api/logout", methods=["POST"])

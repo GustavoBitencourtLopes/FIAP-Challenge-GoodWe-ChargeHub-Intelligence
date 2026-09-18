@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel do Gestor · ChargeGrid Intelligence</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    {% include 'partials/_navbar_gestor.html' %}
+
+    <section class="painel-header" id="kpis">
+        <h1>Painel do outlet</h1>
+        <p>Visão geral da operação de carregamento — dados agregados de todas as sessões.</p>
+    </section>
+
+    <div class="dashboard-wrapper">
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Receita total</div>
+                <div class="kpi-value">R$ {{ '%.2f'|format(receita_total) }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Sessões pagas</div>
+                <div class="kpi-value">{{ numero_sessoes_pagas }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Ticket médio</div>
+                <div class="kpi-value">R$ {{ '%.2f'|format(ticket_medio) }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Taxa de resgate de cupons</div>
+                <div class="kpi-value">{{ taxa_resgate }}%</div>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="demanda">
+            <h2>Gestão de demanda</h2>
+            <p class="subtitle">Ocupação dos postos por horário do dia.</p>
+            <div class="empty-state">
+                <h3>Em construção — Bloco 2</h3>
+                <p>Aqui vai entrar o gráfico de ocupação por horário.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="tarifacao">
+            <h2>Tarifação dinâmica</h2>
+            <p class="subtitle">Impacto da taxa de pico e dos descontos por baixa demanda.</p>
+            <div class="empty-state">
+                <h3>Em construção — Bloco 2</h3>
+                <p>Aqui vai entrar o detalhamento de quanto foi cobrado a mais/a menos por causa da tarifação.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="faturamento">
+            <h2>Faturamento</h2>
+            <p class="subtitle">Receita por forma de pagamento, por assinatura VIP e por tipo de carregador.</p>
+            <div class="empty-state">
+                <h3>Em construção — Bloco 3</h3>
+                <p>Aqui vai entrar o detalhamento de receita, incluindo receita por tipo de carregador.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="cupons">
+            <h2>Cupons mais resgatados</h2>
+            <p class="subtitle">Ranking das lojas parceiras com mais cupons resgatados pelos clientes.</p>
+            <div class="empty-state">
+                <h3>Em construção — Bloco 4</h3>
+                <p>Aqui vai entrar o ranking de lojas, além do simulador "E se" de tarifação.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="assistente">
+            <h2>Assistente do gestor</h2>
+            <p class="subtitle">IA que analisa os dados do outlet e sugere ações.</p>
+            <div class="empty-state">
+                <h3>Em construção — Bloco 5</h3>
+                <p>Aqui vai entrar o assistente de gestão, com sugestões baseadas nos dados reais do outlet.</p>
+            </div>
+        </div>
+    </div>
+
+    {% include 'partials/_footer.html' %}
+    {% include 'partials/_back_to_top.html' %}
+
+    <script src="/static/js/main.js"></script>
+</body>
+
+</html>
