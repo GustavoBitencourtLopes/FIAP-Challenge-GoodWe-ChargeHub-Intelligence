@@ -19,7 +19,8 @@ Fluxo de onboarding:
     (usuário "gestor", senha "123") — acessível pelo link "Login corporativo"
     na tela de login normal.
 11. /gestor/painel   -> painel do gestor do outlet (só para contas do tipo
-    "gestor"): KPIs, demanda, tarifação, faturamento, cupons.
+    "gestor"): KPIs, demanda, tarifação, faturamento, cupons, simulador e
+    um assistente de IA que já conhece os dados reais da operação.
 
 SISTEMA INTELIGENTE (regras, sem custo de API):
 - Detecta horário de pico pelo relógio real (fuso de São Paulo).
@@ -202,8 +203,6 @@ with app.app_context():
     # Conta de gestor criada automaticamente, para demonstração. Como o
     # banco no Render é recriado a cada deploy, isso garante que essa
     # conta sempre existe, sem precisar de um cadastro manual toda vez.
-    # Usa "gestor" (não um email) como identificador, para caber num
-    # campo de texto simples na tela de login corporativo.
     if not Usuario.query.filter_by(email="gestor").first():
         gestor_demo = Usuario(nome="Gestor do Outlet", email="gestor", tipo="gestor")
         gestor_demo.set_senha("123")
@@ -270,6 +269,17 @@ def _formatar_data_br(dt_utc):
     except ZoneInfoNotFoundError:
         dt_com_tz = dt_utc
     return dt_com_tz.strftime("%d/%m/%Y às %H:%M")
+
+
+def _hora_sao_paulo(dt_utc):
+    """Converte um datetime salvo em UTC para a hora local de São Paulo
+    (0-23), usada nos gráficos de demanda por horário do gestor."""
+    if dt_utc is None:
+        return 0
+    try:
+        return dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo")).hour
+    except ZoneInfoNotFoundError:
+        return dt_utc.hour
 
 
 # ---------------------------------------------------------------------------
@@ -433,28 +443,126 @@ def historico():
 # ROTAS DE PÁGINA — GESTOR
 # ---------------------------------------------------------------------------
 
-@app.route("/gestor/painel")
-@gestor_required
-def painel_gestor():
-    sessoes_pagas = SessaoCarregamento.query.filter_by(pago=True).all()
-    total_sessoes_geral = SessaoCarregamento.query.count()
+# Horas do dia (0-23) que caem dentro do horário de pico — usado só para
+# destacar visualmente o gráfico de demanda no painel do gestor. Mantido
+# em sincronia manual com HORARIOS_PICO, definido mais abaixo.
+HORAS_DE_PICO = {8, 9, 18, 19, 20}
 
+
+def _calcular_metricas_outlet():
+    """Calcula TODAS as métricas agregadas do painel do gestor num só
+    lugar. Usado tanto para renderizar o painel quanto para alimentar o
+    assistente de IA do gestor — assim os dois sempre mostram os mesmos
+    números, sem duplicar a lógica de cálculo."""
+
+    todas_sessoes = SessaoCarregamento.query.all()
+    sessoes_pagas = [s for s in todas_sessoes if s.pago]
+
+    # KPIs
     receita_total = sum(s.valor_final for s in sessoes_pagas)
     numero_sessoes_pagas = len(sessoes_pagas)
     ticket_medio = (receita_total / numero_sessoes_pagas) if numero_sessoes_pagas else 0
 
     total_cupons_resgatados = CupomResgatado.query.count()
-    taxa_resgate = (total_cupons_resgatados / total_sessoes_geral * 100) if total_sessoes_geral else 0
+    taxa_resgate = (total_cupons_resgatados / len(todas_sessoes) * 100) if todas_sessoes else 0
+
+    # Demanda
+    contagem_por_hora = [0] * 24
+    for s in todas_sessoes:
+        contagem_por_hora[_hora_sao_paulo(s.criado_em)] += 1
+    maximo_por_hora = max(contagem_por_hora) if any(contagem_por_hora) else 1
+    hora_mais_movimentada = contagem_por_hora.index(max(contagem_por_hora)) if any(contagem_por_hora) else None
+
+    contagem_por_nivel = {"baixa": 0, "media": 0, "alta": 0}
+    for s in todas_sessoes:
+        if s.nivel_lotacao in contagem_por_nivel:
+            contagem_por_nivel[s.nivel_lotacao] += 1
+
+    sessoes_em_pico = sum(1 for s in todas_sessoes if s.horario_pico)
+    percentual_em_pico = (sessoes_em_pico / len(todas_sessoes) * 100) if todas_sessoes else 0
+
+    # Tarifação
+    receita_extra_pico = sum(
+        (s.taxa_pico_kwh or 0) * (s.energia_kwh or 0) for s in sessoes_pagas if s.horario_pico
+    )
+    total_desconto_concedido = sum((s.desconto or 0) for s in sessoes_pagas)
+    sessoes_pagas_com_desconto = sum(1 for s in sessoes_pagas if (s.desconto or 0) > 0)
+
+    receita_base_pico_sem_taxa = sum(
+        (s.tarifa_base_kwh or 0) * (s.energia_kwh or 0) for s in sessoes_pagas if s.horario_pico
+    )
+
+    # Faturamento
+    receita_por_forma = {}
+    for s in sessoes_pagas:
+        forma = FORMA_PAGAMENTO_LABEL.get(s.forma_pagamento, "Outro")
+        receita_por_forma[forma] = receita_por_forma.get(forma, 0) + s.valor_final
+    receita_por_forma_lista = sorted(receita_por_forma.items(), key=lambda item: item[1], reverse=True)
+
+    usuarios_vip_ativos = Usuario.query.filter_by(tipo="cliente", vip=True).count()
+    receita_vip_mensal = usuarios_vip_ativos * PRECO_VIP_MENSAL
+
+    receita_por_carregador = {}
+    sessoes_por_carregador = {}
+    for s in sessoes_pagas:
+        tipo = s.carregador_tipo or "Desconhecido"
+        receita_por_carregador[tipo] = receita_por_carregador.get(tipo, 0) + s.valor_final
+        sessoes_por_carregador[tipo] = sessoes_por_carregador.get(tipo, 0) + 1
+    receita_por_carregador_lista = sorted(
+        receita_por_carregador.items(), key=lambda item: item[1], reverse=True
+    )
+    maior_receita_carregador = max(receita_por_carregador.values()) if receita_por_carregador else 0
+
+    # Cupons
+    cupons_todos = CupomResgatado.query.all()
+    contagem_cupons_por_loja = {}
+    for c in cupons_todos:
+        contagem_cupons_por_loja[c.loja] = contagem_cupons_por_loja.get(c.loja, 0) + 1
+    ranking_cupons = sorted(contagem_cupons_por_loja.items(), key=lambda item: item[1], reverse=True)
+    maior_contagem_cupom = max(contagem_cupons_por_loja.values()) if contagem_cupons_por_loja else 0
+
+    return {
+        "total_sessoes": len(todas_sessoes),
+        "receita_total": receita_total,
+        "numero_sessoes_pagas": numero_sessoes_pagas,
+        "ticket_medio": ticket_medio,
+        "total_cupons_resgatados": total_cupons_resgatados,
+        "taxa_resgate": round(taxa_resgate, 1),
+        "contagem_por_hora": contagem_por_hora,
+        "maximo_por_hora": maximo_por_hora,
+        "hora_mais_movimentada": hora_mais_movimentada,
+        "contagem_por_nivel": contagem_por_nivel,
+        "sessoes_em_pico": sessoes_em_pico,
+        "percentual_em_pico": round(percentual_em_pico, 1),
+        "receita_extra_pico": receita_extra_pico,
+        "total_desconto_concedido": total_desconto_concedido,
+        "sessoes_pagas_com_desconto": sessoes_pagas_com_desconto,
+        "receita_base_pico_sem_taxa": receita_base_pico_sem_taxa,
+        "receita_por_forma_lista": receita_por_forma_lista,
+        "usuarios_vip_ativos": usuarios_vip_ativos,
+        "receita_vip_mensal": receita_vip_mensal,
+        "receita_por_carregador_lista": receita_por_carregador_lista,
+        "sessoes_por_carregador": sessoes_por_carregador,
+        "maior_receita_carregador": maior_receita_carregador,
+        "ranking_cupons": ranking_cupons,
+        "maior_contagem_cupom": maior_contagem_cupom,
+    }
+
+
+@app.route("/gestor/painel")
+@gestor_required
+def painel_gestor():
+    metricas = _calcular_metricas_outlet()
 
     return render_template(
         "painel_gestor.html",
         usuario=usuario_atual(),
-        receita_total=receita_total,
-        numero_sessoes_pagas=numero_sessoes_pagas,
-        ticket_medio=ticket_medio,
-        taxa_resgate=round(taxa_resgate, 1),
-        total_cupons_resgatados=total_cupons_resgatados,
+        horas_de_pico=HORAS_DE_PICO,
+        tarifas_por_kwh=TARIFAS_POR_KWH,
+        desconto_percentual=DESCONTO_PERCENTUAL,
+        taxa_pico_percentual=TAXA_PICO_PERCENTUAL,
         pagina_atual="painel_gestor",
+        **metricas,
     )
 
 
@@ -1005,6 +1113,103 @@ def api_chat():
         return jsonify({"resposta": resposta.text})
     except Exception as erro:
         app.logger.error(f"Erro ao chamar a API do Gemini: {erro}")
+        return jsonify({"erro": "Não foi possível falar com o assistente agora. Tente novamente em instantes."}), 502
+
+
+# ---------------------------------------------------------------------------
+# API - ASSISTENTE DO GESTOR (Google Gemini + dados agregados reais)
+# ---------------------------------------------------------------------------
+
+def _montar_system_prompt_gestor(usuario, m):
+    resumo_forma = "\n".join(
+        f"- {forma}: R$ {valor:.2f}" for forma, valor in m["receita_por_forma_lista"]
+    ) or "Nenhuma sessão paga ainda."
+
+    resumo_carregador = "\n".join(
+        f"- {tipo}: R$ {valor:.2f} ({m['sessoes_por_carregador'][tipo]} sessão(ões))"
+        for tipo, valor in m["receita_por_carregador_lista"]
+    ) or "Nenhuma sessão paga ainda."
+
+    resumo_cupons = "\n".join(
+        f"- {loja}: {contagem} resgate(s)" for loja, contagem in m["ranking_cupons"][:5]
+    ) or "Nenhum cupom resgatado ainda."
+
+    hora_pico_texto = f"{m['hora_mais_movimentada']}h" if m["hora_mais_movimentada"] is not None else "ainda não há dados suficientes"
+
+    return f"""Você é o assistente de gestão do ChargeGrid Intelligence, uma plataforma de
+carregadores de veículos elétricos instalada num outlet comercial (parceria FIAP EV
+Challenge 2026 x GoodWe). Você fala com o GESTOR do outlet, não com clientes finais — seu
+papel é ajudar a interpretar os dados reais da operação e sugerir ações de negócio.
+
+DADOS REAIS DA OPERAÇÃO ATÉ AGORA:
+- Sessões totais registradas: {m['total_sessoes']}
+- Sessões pagas: {m['numero_sessoes_pagas']}
+- Receita total de recargas: R$ {m['receita_total']:.2f}
+- Ticket médio: R$ {m['ticket_medio']:.2f}
+- Receita VIP mensal (assinantes ativos: {m['usuarios_vip_ativos']}): R$ {m['receita_vip_mensal']:.2f}
+- Horário mais movimentado: {hora_pico_texto}
+- % das sessões em horário de pico: {m['percentual_em_pico']}%
+- Receita extra gerada pela taxa de pico: R$ {m['receita_extra_pico']:.2f}
+- Desconto total concedido em baixa demanda: R$ {m['total_desconto_concedido']:.2f}
+- Taxa de resgate de cupons: {m['taxa_resgate']}%
+
+RECEITA POR FORMA DE PAGAMENTO:
+{resumo_forma}
+
+RECEITA POR TIPO DE CARREGADOR:
+{resumo_carregador}
+
+CUPONS MAIS RESGATADOS (top 5):
+{resumo_cupons}
+
+SEU PAPEL:
+1. Responder perguntas do gestor sobre esses dados, com clareza e números concretos.
+2. Sugerir ações de negócio baseadas nesses números (ex: ajustar a taxa de pico, negociar
+   com uma loja específica, considerar mais um carregador de determinado tipo) — sempre
+   citando o dado real que embasa a sugestão.
+3. Nunca inventar números que não estejam listados acima. Se não houver dado suficiente
+   para responder algo, diga isso claramente.
+4. Ser direto e objetivo — no máximo 4-5 frases, usando "-" para listas e "**texto**"
+   para destacar números e conclusões importantes.
+
+O gestor logado se chama {usuario.nome}."""
+
+
+@app.route("/api/chat-gestor", methods=["POST"])
+@gestor_required
+def api_chat_gestor():
+    if gemini_client is None:
+        return jsonify({
+            "erro": "O assistente ainda não foi configurado. Verifique se a GOOGLE_API_KEY está definida no .env.",
+        }), 503
+
+    dados = request.get_json(silent=True) or {}
+    mensagens = dados.get("mensagens") or []
+
+    if not mensagens:
+        return jsonify({"erro": "Envie uma mensagem."}), 400
+
+    usuario = usuario_atual()
+    metricas = _calcular_metricas_outlet()
+    system_prompt = _montar_system_prompt_gestor(usuario, metricas)
+
+    historico_convertido = []
+    for msg in mensagens[-12:]:
+        papel = "model" if msg.get("role") == "assistant" else "user"
+        historico_convertido.append({"role": papel, "parts": [{"text": msg.get("content", "")}]})
+
+    try:
+        resposta = gemini_client.models.generate_content(
+            model=CHAT_MODELO,
+            contents=historico_convertido,
+            config={
+                "system_instruction": system_prompt,
+                "max_output_tokens": 400,
+            },
+        )
+        return jsonify({"resposta": resposta.text})
+    except Exception as erro:
+        app.logger.error(f"Erro ao chamar a API do Gemini (gestor): {erro}")
         return jsonify({"erro": "Não foi possível falar com o assistente agora. Tente novamente em instantes."}), 502
 
 

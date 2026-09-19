@@ -2108,3 +2108,231 @@ img {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------- */
+/* PAINEL DO GESTOR — Demanda e Tarifação (Bloco 2)                     */
+/* ---------------------------------------------------------------- */
+
+.hour-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 12px 0;
+}
+
+.hour-bar {
+  flex: 1;
+  min-height: 3px;
+  background: var(--green);
+  border-radius: 3px 3px 0 0;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  cursor: default;
+}
+
+.hour-bar:hover { transform: scaleY(1.03); opacity: 0.85; }
+
+.hour-bar.pico { background: var(--red); }
+
+.hour-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px 0;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.tarifa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tarifa-table th,
+.tarifa-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tarifa-table th {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.tarifa-table tbody tr:last-child td { border-bottom: none; }
+
+/* ---------------------------------------------------------------- */
+/* PAINEL DO GESTOR — Faturamento e Receita por Carregador (Bloco 3)     */
+/* ---------------------------------------------------------------- */
+
+.revenue-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.revenue-bar-row {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.revenue-bar-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.revenue-bar-track {
+  height: 10px;
+  background: var(--bg-alt);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.revenue-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--red-light));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.revenue-bar-fill.charger {
+  background: linear-gradient(90deg, #ca8a04, var(--gold));
+}
+
+.revenue-bar-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .revenue-bar-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .revenue-bar-value { text-align: right; }
+}
+
+/* ---------------------------------------------------------------- */
+/* PAINEL DO GESTOR — Cupons e Simulador de Tarifação (Bloco 4)          */
+/* ---------------------------------------------------------------- */
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ranking-item {
+  display: grid;
+  grid-template-columns: 32px 140px 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.ranking-position {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ranking-nome {
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.simulador-box {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.simulador-box label {
+  display: block;
+  font-size: 0.92rem;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+.simulador-box label strong {
+  color: var(--gold);
+  font-size: 1.1rem;
+}
+
+.slider-tarifa {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider-tarifa::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--gold);
+  cursor: pointer;
+}
+
+.slider-tarifa::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--gold);
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .ranking-item {
+    grid-template-columns: 32px 1fr auto;
+  }
+  .ranking-item .revenue-bar-track { display: none; }
+}
+
+/* ---------------------------------------------------------------- */
+/* PAINEL DO GESTOR — Assistente de IA (Bloco 5)                        */
+/* ---------------------------------------------------------------- */
+
+.assistente-gestor-card {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.assistente-gestor-card .assistente-messages {
+  height: 380px;
+}

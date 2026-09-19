@@ -1,95 +1,417 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel do Gestor · ChargeGrid Intelligence</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel do Gestor · ChargeGrid Intelligence</title>
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
-
 <body>
 
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
 
-    {% include 'partials/_navbar_gestor.html' %}
+  {% include 'partials/_navbar_gestor.html' %}
 
-    <section class="painel-header" id="kpis">
-        <h1>Painel do outlet</h1>
-        <p>Visão geral da operação de carregamento — dados agregados de todas as sessões.</p>
-    </section>
+  <section class="painel-header" id="kpis">
+    <h1>Painel do outlet</h1>
+    <p>Visão geral da operação de carregamento — dados agregados de todas as sessões.</p>
+  </section>
 
-    <div class="dashboard-wrapper">
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-label">Receita total</div>
-                <div class="kpi-value">R$ {{ '%.2f'|format(receita_total) }}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Sessões pagas</div>
-                <div class="kpi-value">{{ numero_sessoes_pagas }}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Ticket médio</div>
-                <div class="kpi-value">R$ {{ '%.2f'|format(ticket_medio) }}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Taxa de resgate de cupons</div>
-                <div class="kpi-value">{{ taxa_resgate }}%</div>
-            </div>
-        </div>
+  <div class="dashboard-wrapper">
 
-        <div class="dashboard-section" id="demanda">
-            <h2>Gestão de demanda</h2>
-            <p class="subtitle">Ocupação dos postos por horário do dia.</p>
-            <div class="empty-state">
-                <h3>Em construção — Bloco 2</h3>
-                <p>Aqui vai entrar o gráfico de ocupação por horário.</p>
-            </div>
-        </div>
-
-        <div class="dashboard-section" id="tarifacao">
-            <h2>Tarifação dinâmica</h2>
-            <p class="subtitle">Impacto da taxa de pico e dos descontos por baixa demanda.</p>
-            <div class="empty-state">
-                <h3>Em construção — Bloco 2</h3>
-                <p>Aqui vai entrar o detalhamento de quanto foi cobrado a mais/a menos por causa da tarifação.</p>
-            </div>
-        </div>
-
-        <div class="dashboard-section" id="faturamento">
-            <h2>Faturamento</h2>
-            <p class="subtitle">Receita por forma de pagamento, por assinatura VIP e por tipo de carregador.</p>
-            <div class="empty-state">
-                <h3>Em construção — Bloco 3</h3>
-                <p>Aqui vai entrar o detalhamento de receita, incluindo receita por tipo de carregador.</p>
-            </div>
-        </div>
-
-        <div class="dashboard-section" id="cupons">
-            <h2>Cupons mais resgatados</h2>
-            <p class="subtitle">Ranking das lojas parceiras com mais cupons resgatados pelos clientes.</p>
-            <div class="empty-state">
-                <h3>Em construção — Bloco 4</h3>
-                <p>Aqui vai entrar o ranking de lojas, além do simulador "E se" de tarifação.</p>
-            </div>
-        </div>
-
-        <div class="dashboard-section" id="assistente">
-            <h2>Assistente do gestor</h2>
-            <p class="subtitle">IA que analisa os dados do outlet e sugere ações.</p>
-            <div class="empty-state">
-                <h3>Em construção — Bloco 5</h3>
-                <p>Aqui vai entrar o assistente de gestão, com sugestões baseadas nos dados reais do outlet.</p>
-            </div>
-        </div>
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Receita total</div>
+        <div class="kpi-value">R$ {{ '%.2f'|format(receita_total) }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Sessões pagas</div>
+        <div class="kpi-value">{{ numero_sessoes_pagas }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Ticket médio</div>
+        <div class="kpi-value">R$ {{ '%.2f'|format(ticket_medio) }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Taxa de resgate de cupons</div>
+        <div class="kpi-value">{{ taxa_resgate }}%</div>
+      </div>
     </div>
 
-    {% include 'partials/_footer.html' %}
-    {% include 'partials/_back_to_top.html' %}
+    <!-- Demanda -->
+    <div class="dashboard-section" id="demanda">
+      <h2>Gestão de demanda</h2>
+      <p class="subtitle">Sessões de carregamento por horário do dia — barras vermelhas marcam o horário de pico (08h-10h e 18h-21h).</p>
 
-    <script src="/static/js/main.js"></script>
+      {% if total_sessoes == 0 %}
+        <div class="empty-state">
+          <h3>Ainda não há sessões registradas</h3>
+          <p>Assim que clientes começarem a carregar, o gráfico de demanda aparece aqui.</p>
+        </div>
+      {% else %}
+        <div class="hour-chart">
+          {% for contagem in contagem_por_hora %}
+          <div class="hour-bar {{ 'pico' if loop.index0 in horas_de_pico else '' }}"
+               style="height: {{ (contagem / maximo_por_hora * 100) if maximo_por_hora else 0 }}%"
+               title="{{ loop.index0 }}h — {{ contagem }} sessão(ões)"></div>
+          {% endfor %}
+        </div>
+        <div class="hour-chart-labels">
+          <span>0h</span><span>3h</span><span>6h</span><span>9h</span><span>12h</span><span>15h</span><span>18h</span><span>21h</span>
+        </div>
+
+        <div class="stat-grid" style="margin-top: 24px;">
+          <div class="stat-box">
+            <div class="stat-label">Demanda baixa</div>
+            <div class="stat-value">{{ contagem_por_nivel.baixa }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Demanda moderada</div>
+            <div class="stat-value">{{ contagem_por_nivel.media }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Demanda alta</div>
+            <div class="stat-value">{{ contagem_por_nivel.alta }}</div>
+          </div>
+          <div class="stat-box highlight">
+            <div class="stat-label">Sessões em horário de pico</div>
+            <div class="stat-value">{{ percentual_em_pico }}%</div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Tarifação -->
+    <div class="dashboard-section" id="tarifacao">
+      <h2>Tarifação dinâmica</h2>
+      <p class="subtitle">Impacto real da taxa de horário de pico e dos descontos por baixa demanda no faturamento.</p>
+
+      <div class="stat-grid">
+        <div class="stat-box highlight">
+          <div class="stat-label">Receita extra em horário de pico</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Desconto total concedido</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(total_desconto_concedido) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Sessões com desconto aplicado</div>
+          <div class="stat-value">{{ sessoes_pagas_com_desconto }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Taxa de pico atual</div>
+          <div class="stat-value">+{{ (taxa_pico_percentual * 100)|round|int }}%</div>
+        </div>
+      </div>
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Tabela de tarifas vigentes</div>
+      <table class="tarifa-table">
+        <thead>
+          <tr>
+            <th>Nível de demanda</th>
+            <th>Tarifa base</th>
+            <th>Desconto aplicado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Baixa</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.baixa) }}/kWh</td>
+            <td>{{ (desconto_percentual.baixa * 100)|round|int }}%</td>
+          </tr>
+          <tr>
+            <td>Moderada</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.media) }}/kWh</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>Alta</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.alta) }}/kWh</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="subtitle" style="margin-top: 12px; margin-bottom: 0;">
+        Em horário de pico (08h-10h, 18h-21h), soma-se uma taxa extra de +{{ (taxa_pico_percentual * 100)|round|int }}% sobre a tarifa base.
+      </p>
+    </div>
+
+    <!-- Faturamento -->
+    <div class="dashboard-section" id="faturamento">
+      <h2>Faturamento</h2>
+      <p class="subtitle">Receita por forma de pagamento, por assinatura VIP e por tipo de carregador.</p>
+
+      <div class="stat-grid">
+        <div class="stat-box highlight">
+          <div class="stat-label">Receita de recargas</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_total) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Receita VIP (mensal)</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_vip_mensal) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Assinantes VIP ativos</div>
+          <div class="stat-value">{{ usuarios_vip_ativos }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Receita total combinada</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_total + receita_vip_mensal) }}</div>
+        </div>
+      </div>
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Receita por forma de pagamento</div>
+      {% if receita_por_forma_lista %}
+        <div class="revenue-bars">
+          {% for forma, valor in receita_por_forma_lista %}
+          <div class="revenue-bar-row">
+            <span class="revenue-bar-label">{{ forma }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill" style="width: {{ (valor / receita_total * 100) if receita_total else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">R$ {{ '%.2f'|format(valor) }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="subtitle" style="margin-bottom:0;">Nenhuma sessão paga ainda.</p>
+      {% endif %}
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Receita por tipo de carregador</div>
+      <p class="subtitle" style="margin-top:-14px;">Ajuda a decidir onde vale a pena instalar mais postos.</p>
+      {% if receita_por_carregador_lista %}
+        <div class="revenue-bars">
+          {% for tipo, valor in receita_por_carregador_lista %}
+          <div class="revenue-bar-row">
+            <span class="revenue-bar-label">{{ tipo }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill charger" style="width: {{ (valor / maior_receita_carregador * 100) if maior_receita_carregador else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">R$ {{ '%.2f'|format(valor) }} · {{ sessoes_por_carregador[tipo] }} sessão(ões)</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="subtitle" style="margin-bottom:0;">Nenhuma sessão paga ainda.</p>
+      {% endif %}
+    </div>
+
+    <!-- Cupons mais resgatados -->
+    <div class="dashboard-section" id="cupons">
+      <h2>Cupons mais resgatados</h2>
+      <p class="subtitle">Ranking das lojas parceiras com mais cupons resgatados pelos clientes — útil para negociar com lojistas.</p>
+
+      {% if ranking_cupons %}
+        <div class="ranking-list">
+          {% for loja, contagem in ranking_cupons %}
+          <div class="ranking-item">
+            <span class="ranking-position">#{{ loop.index }}</span>
+            <span class="ranking-nome">{{ loja }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill charger" style="width: {{ (contagem / maior_contagem_cupom * 100) if maior_contagem_cupom else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">{{ contagem }} resgate(s)</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>Nenhum cupom resgatado ainda</h3>
+          <p>O ranking aparece aqui assim que clientes começarem a resgatar ofertas durante o carregamento.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Simulador "E se" de tarifação -->
+    <div class="dashboard-section" id="simulador">
+      <h2>Simulador "E se" de tarifação</h2>
+      <p class="subtitle">Ajuste a taxa de horário de pico e veja o impacto projetado na receita, com base no histórico real de consumo em pico.</p>
+
+      {% if receita_base_pico_sem_taxa == 0 %}
+        <div class="empty-state">
+          <h3>Sem dados suficientes ainda</h3>
+          <p>Assim que houver sessões pagas em horário de pico, o simulador fica disponível aqui.</p>
+        </div>
+      {% else %}
+        <div class="simulador-box">
+          <label for="slider-taxa-pico">
+            Taxa de horário de pico: <strong id="valor-taxa-pico">{{ (taxa_pico_percentual * 100)|round|int }}%</strong>
+          </label>
+          <input type="range" id="slider-taxa-pico" min="0" max="50" step="1"
+                 value="{{ (taxa_pico_percentual * 100)|round|int }}" class="slider-tarifa">
+
+          <div class="stat-grid" style="margin-top: 20px;">
+            <div class="stat-box">
+              <div class="stat-label">Receita extra atual</div>
+              <div class="stat-value">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+            </div>
+            <div class="stat-box highlight">
+              <div class="stat-label">Receita extra projetada</div>
+              <div class="stat-value" id="valor-receita-projetada">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Diferença projetada</div>
+              <div class="stat-value" id="valor-diferenca">R$ 0,00</div>
+            </div>
+          </div>
+        </div>
+
+        <script>
+          (function () {
+            const receitaBase = {{ receita_base_pico_sem_taxa }};
+            const receitaAtual = {{ receita_extra_pico }};
+            const slider = document.getElementById('slider-taxa-pico');
+            const valorTaxa = document.getElementById('valor-taxa-pico');
+            const valorProjetada = document.getElementById('valor-receita-projetada');
+            const valorDiferenca = document.getElementById('valor-diferenca');
+
+            slider.addEventListener('input', () => {
+              const percentual = parseFloat(slider.value);
+              valorTaxa.textContent = percentual + '%';
+
+              const receitaProjetada = receitaBase * (percentual / 100);
+              valorProjetada.textContent = 'R$ ' + receitaProjetada.toFixed(2);
+
+              const diferenca = receitaProjetada - receitaAtual;
+              const sinal = diferenca >= 0 ? '+ R$ ' : '- R$ ';
+              valorDiferenca.textContent = sinal + Math.abs(diferenca).toFixed(2);
+            });
+          })();
+        </script>
+      {% endif %}
+    </div>
+
+    <!-- Assistente do gestor -->
+    <div class="dashboard-section" id="assistente">
+      <h2>Assistente do gestor</h2>
+      <p class="subtitle">Converse sobre os números do outlet — a IA já conhece todos os dados mostrados acima.</p>
+
+      <div class="assistente-gestor-card">
+        <div class="assistente-messages" id="gestor-messages">
+          <div class="chat-msg assistente">
+            Olá! Posso te ajudar a interpretar os números do outlet e sugerir ações — pergunte sobre demanda, tarifação, faturamento ou cupons.
+          </div>
+        </div>
+
+        <div class="suggestion-chips" id="gestor-chips">
+          <button class="suggestion-chip">Qual horário tem mais demanda?</button>
+          <button class="suggestion-chip">Vale a pena aumentar a taxa de pico?</button>
+          <button class="suggestion-chip">Qual loja devo priorizar numa negociação?</button>
+          <button class="suggestion-chip">Como está a receita por tipo de carregador?</button>
+        </div>
+
+        <div class="assistente-input-row">
+          <input type="text" id="gestor-input" placeholder="Pergunte sobre os dados do outlet...">
+          <button id="gestor-enviar" aria-label="Enviar">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+  <script>
+    (function () {
+      const mensagensEl = document.getElementById('gestor-messages');
+      const inputEl = document.getElementById('gestor-input');
+      const enviarBtn = document.getElementById('gestor-enviar');
+      const chipsContainer = document.getElementById('gestor-chips');
+      let historico = [];
+
+      function escaparHtml(texto) {
+        const div = document.createElement('div');
+        div.textContent = texto;
+        return div.innerHTML;
+      }
+
+      function formatarMarkdown(texto) {
+        const seguro = escaparHtml(texto);
+        const linhas = seguro.split('\n');
+        let html = '';
+        let dentroLista = false;
+
+        linhas.forEach(linhaOriginal => {
+          const linha = linhaOriginal.trim();
+          if (linha.startsWith('- ') || linha.startsWith('* ')) {
+            if (!dentroLista) { html += '<ul>'; dentroLista = true; }
+            html += `<li>${linha.slice(2)}</li>`;
+          } else {
+            if (dentroLista) { html += '</ul>'; dentroLista = false; }
+            if (linha) html += `<p>${linha}</p>`;
+          }
+        });
+        if (dentroLista) html += '</ul>';
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        return html;
+      }
+
+      function adicionarMensagem(texto, tipo) {
+        const div = document.createElement('div');
+        div.className = `chat-msg ${tipo}`;
+        if (tipo === 'assistente') {
+          div.innerHTML = formatarMarkdown(texto);
+        } else {
+          div.textContent = texto;
+        }
+        mensagensEl.appendChild(div);
+        mensagensEl.scrollTop = mensagensEl.scrollHeight;
+      }
+
+      async function enviarMensagem(textoForcado) {
+        const texto = (textoForcado || inputEl.value).trim();
+        if (!texto) return;
+
+        chipsContainer.style.display = 'none';
+
+        adicionarMensagem(texto, 'usuario');
+        historico.push({ role: 'user', content: texto });
+        inputEl.value = '';
+        inputEl.disabled = true;
+        enviarBtn.disabled = true;
+
+        const indicador = document.createElement('div');
+        indicador.className = 'chat-typing';
+        indicador.textContent = 'Analisando os dados...';
+        mensagensEl.appendChild(indicador);
+        mensagensEl.scrollTop = mensagensEl.scrollHeight;
+
+        try {
+          const resposta = await fetch('/api/chat-gestor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mensagens: historico }),
+          });
+          const resultado = await resposta.json();
+          indicador.remove();
+
+          if (!resposta.ok) {
+            adicionarMensagem(resultado.erro || 'Não foi possível responder agora.', 'assistente');
+            return;
+          }
+
+          adicionarMensagem(resultado.resposta, 'assistente');
+          historico.push({ role: 'assistant', content: resultado.resposta });
+        } catch (err) {
+          indicador.remove();
+          adicionarMensagem('Erro de conexão com o servidor.', 'assistente');
+        } finally {
+          inputEl.disabled = false;
+          enviarBtn.disabled = false;
+          inputEl.focus();
+        }
+      }
+
+      enviarBtn.addEventListener('click', () => enviarMensagem());
+      inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarMensagem(); });
+      chipsContainer.querySelectorAll('.suggestion-chip').forEach(chip => {
+        chip.addEventListener('click', () => enviarMensagem(chip.textContent));
+      });
+    })();
+  </script>
 </body>
-
 </html>

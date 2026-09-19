@@ -1,31 +1,32 @@
 <nav class="navbar">
-    <a href="/gestor/painel" class="logo">
-        <img src="/static/img/hero_2.jpg" alt="GoodWe" class="logo-badge">
-        <span class="logo-divider"></span>
-        <span class="logo-text">ChargeGrid <span class="accent">Intelligence</span></span>
-    </a>
+  <a href="/gestor/painel" class="logo">
+    <img src="/static/img/hero_2.jpg" alt="GoodWe" class="logo-badge">
+    <span class="logo-divider"></span>
+    <span class="logo-text">ChargeGrid <span class="accent">Intelligence</span></span>
+  </a>
 
-    <div class="nav-links">
-        <a href="#kpis">Visão geral</a>
-        <a href="#demanda">Demanda</a>
-        <a href="#tarifacao">Tarifação</a>
-        <a href="#faturamento">Faturamento</a>
-        <a href="#cupons">Cupons</a>
-        <a href="#assistente">Assistente</a>
-    </div>
+  <div class="nav-links">
+    <a href="#kpis">Visão geral</a>
+    <a href="#demanda">Demanda</a>
+    <a href="#tarifacao">Tarifação</a>
+    <a href="#faturamento">Faturamento</a>
+    <a href="#cupons">Cupons</a>
+    <a href="#simulador">Simulador</a>
+    <a href="#assistente">Assistente</a>
+  </div>
 
-    <div class="nav-actions">
-        <span class="gestor-tag">Painel do Gestor</span>
-        <button id="btn-sair" class="btn btn-outline btn-sm">Sair</button>
-        <button class="nav-toggle" aria-label="Abrir menu">
-            <span></span><span></span><span></span>
-        </button>
-    </div>
+  <div class="nav-actions">
+    <span class="gestor-tag">Painel do Gestor</span>
+    <button id="btn-sair" class="btn btn-outline btn-sm">Sair</button>
+    <button class="nav-toggle" aria-label="Abrir menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
 </nav>
 
 <script>
-    document.getElementById('btn-sair').addEventListener('click', async () => {
-        await fetch('/api/logout', { method: 'POST' });
-        window.location.href = '/';
-    });
+  document.getElementById('btn-sair').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/';
+  });
 </script>
