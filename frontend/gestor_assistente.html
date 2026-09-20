@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assistente · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Assistente do gestor</h1>
+    <p>Converse sobre os números do outlet — a IA já conhece os dados reais da operação.</p>
+  </section>
+
+  <div class="assistente-wrapper">
+    <div class="assistente-card">
+      <div class="assistente-messages" id="gestor-messages">
+        <div class="chat-msg assistente">
+          Olá! Posso te ajudar a interpretar os números do outlet e sugerir ações — pergunte sobre demanda, tarifação, faturamento ou cupons.
+        </div>
+      </div>
+
+      <div class="suggestion-chips" id="gestor-chips">
+        <button class="suggestion-chip">Qual horário tem mais demanda?</button>
+        <button class="suggestion-chip">Vale a pena aumentar a taxa de pico?</button>
+        <button class="suggestion-chip">Qual loja devo priorizar numa negociação?</button>
+        <button class="suggestion-chip">Como está a receita por tipo de carregador?</button>
+      </div>
+
+      <div class="assistente-input-row">
+        <input type="text" id="gestor-input" placeholder="Pergunte sobre os dados do outlet...">
+        <button id="gestor-enviar" aria-label="Enviar">➤</button>
+      </div>
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+  <script>
+    const mensagensEl = document.getElementById('gestor-messages');
+    const inputEl = document.getElementById('gestor-input');
+    const enviarBtn = document.getElementById('gestor-enviar');
+    const chipsContainer = document.getElementById('gestor-chips');
+    let historico = [];
+
+    function escaparHtml(texto) {
+      const div = document.createElement('div');
+      div.textContent = texto;
+      return div.innerHTML;
+    }
+
+    function formatarMarkdown(texto) {
+      const seguro = escaparHtml(texto);
+      const linhas = seguro.split('\n');
+      let html = '';
+      let dentroLista = false;
+
+      linhas.forEach(linhaOriginal => {
+        const linha = linhaOriginal.trim();
+        if (linha.startsWith('- ') || linha.startsWith('* ')) {
+          if (!dentroLista) { html += '<ul>'; dentroLista = true; }
+          html += `<li>${linha.slice(2)}</li>`;
+        } else {
+          if (dentroLista) { html += '</ul>'; dentroLista = false; }
+          if (linha) html += `<p>${linha}</p>`;
+        }
+      });
+      if (dentroLista) html += '</ul>';
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      return html;
+    }
+
+    function adicionarMensagem(texto, tipo) {
+      const div = document.createElement('div');
+      div.className = `chat-msg ${tipo}`;
+      if (tipo === 'assistente') {
+        div.innerHTML = formatarMarkdown(texto);
+      } else {
+        div.textContent = texto;
+      }
+      mensagensEl.appendChild(div);
+      mensagensEl.scrollTop = mensagensEl.scrollHeight;
+    }
+
+    async function enviarMensagem(textoForcado) {
+      const texto = (textoForcado || inputEl.value).trim();
+      if (!texto) return;
+
+      chipsContainer.style.display = 'none';
+
+      adicionarMensagem(texto, 'usuario');
+      historico.push({ role: 'user', content: texto });
+      inputEl.value = '';
+      inputEl.disabled = true;
+      enviarBtn.disabled = true;
+
+      const indicador = document.createElement('div');
+      indicador.className = 'chat-typing';
+      indicador.textContent = 'Analisando os dados...';
+      mensagensEl.appendChild(indicador);
+      mensagensEl.scrollTop = mensagensEl.scrollHeight;
+
+      try {
+        const resposta = await fetch('/api/chat-gestor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensagens: historico }),
+        });
+        const resultado = await resposta.json();
+        indicador.remove();
+
+        if (!resposta.ok) {
+          adicionarMensagem(resultado.erro || 'Não foi possível responder agora.', 'assistente');
+          return;
+        }
+
+        adicionarMensagem(resultado.resposta, 'assistente');
+        historico.push({ role: 'assistant', content: resultado.resposta });
+      } catch (err) {
+        indicador.remove();
+        adicionarMensagem('Erro de conexão com o servidor.', 'assistente');
+      } finally {
+        inputEl.disabled = false;
+        enviarBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    enviarBtn.addEventListener('click', () => enviarMensagem());
+    inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarMensagem(); });
+    chipsContainer.querySelectorAll('.suggestion-chip').forEach(chip => {
+      chip.addEventListener('click', () => enviarMensagem(chip.textContent));
+    });
+  </script>
+</body>
+</html>

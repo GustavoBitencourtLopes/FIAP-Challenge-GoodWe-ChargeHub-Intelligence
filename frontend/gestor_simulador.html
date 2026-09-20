@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Simulador "E se" de tarifação</h1>
+    <p>Ajuste a taxa de horário de pico e veja o impacto projetado na receita, com base no histórico real de consumo em pico. Isso não altera a tarifa de verdade — é só uma projeção.</p>
+  </section>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-section">
+      {% if receita_base_pico_sem_taxa == 0 %}
+        <div class="empty-state">
+          <h3>Sem dados suficientes ainda</h3>
+          <p>Assim que houver sessões pagas em horário de pico, o simulador fica disponível aqui.</p>
+        </div>
+      {% else %}
+        <div class="simulador-box">
+          <label for="slider-taxa-pico">
+            Taxa de horário de pico: <strong id="valor-taxa-pico">{{ (taxa_pico_percentual * 100)|round|int }}%</strong>
+          </label>
+          <input type="range" id="slider-taxa-pico" min="0" max="50" step="1"
+                 value="{{ (taxa_pico_percentual * 100)|round|int }}" class="slider-tarifa">
+
+          <div class="stat-grid" style="margin-top: 20px;">
+            <div class="stat-box">
+              <div class="stat-label">Receita extra atual</div>
+              <div class="stat-value">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+            </div>
+            <div class="stat-box highlight">
+              <div class="stat-label">Receita extra projetada</div>
+              <div class="stat-value" id="valor-receita-projetada">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Diferença projetada</div>
+              <div class="stat-value" id="valor-diferenca">R$ 0,00</div>
+            </div>
+          </div>
+        </div>
+
+        <script>
+          (function () {
+            const receitaBase = {{ receita_base_pico_sem_taxa }};
+            const receitaAtual = {{ receita_extra_pico }};
+            const slider = document.getElementById('slider-taxa-pico');
+            const valorTaxa = document.getElementById('valor-taxa-pico');
+            const valorProjetada = document.getElementById('valor-receita-projetada');
+            const valorDiferenca = document.getElementById('valor-diferenca');
+
+            slider.addEventListener('input', () => {
+              const percentual = parseFloat(slider.value);
+              valorTaxa.textContent = percentual + '%';
+
+              const receitaProjetada = receitaBase * (percentual / 100);
+              valorProjetada.textContent = 'R$ ' + receitaProjetada.toFixed(2);
+
+              const diferenca = receitaProjetada - receitaAtual;
+              const sinal = diferenca >= 0 ? '+ R$ ' : '- R$ ';
+              valorDiferenca.textContent = sinal + Math.abs(diferenca).toFixed(2);
+            });
+          })();
+        </script>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarifação · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Tarifação dinâmica</h1>
+    <p>Impacto real da taxa de horário de pico e dos descontos por baixa demanda no faturamento.</p>
+  </section>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-section">
+      <div class="stat-grid">
+        <div class="stat-box highlight">
+          <div class="stat-label">Receita extra em horário de pico</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Desconto total concedido</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(total_desconto_concedido) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Sessões com desconto aplicado</div>
+          <div class="stat-value">{{ sessoes_pagas_com_desconto }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Taxa de pico atual</div>
+          <div class="stat-value">+{{ (taxa_pico_percentual * 100)|round|int }}%</div>
+        </div>
+      </div>
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Tabela de tarifas vigentes</div>
+      <table class="tarifa-table">
+        <thead>
+          <tr>
+            <th>Nível de demanda</th>
+            <th>Tarifa base</th>
+            <th>Desconto aplicado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Baixa</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.baixa) }}/kWh</td>
+            <td>{{ (desconto_percentual.baixa * 100)|round|int }}%</td>
+          </tr>
+          <tr>
+            <td>Moderada</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.media) }}/kWh</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>Alta</td>
+            <td>R$ {{ '%.2f'|format(tarifas_por_kwh.alta) }}/kWh</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="subtitle" style="margin-top: 12px; margin-bottom: 0;">
+        Em horário de pico (08h-10h, 18h-21h), soma-se uma taxa extra de +{{ (taxa_pico_percentual * 100)|round|int }}% sobre a tarifa base.
+      </p>
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

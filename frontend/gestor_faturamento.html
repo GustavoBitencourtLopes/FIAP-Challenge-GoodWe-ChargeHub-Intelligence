@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faturamento · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Faturamento</h1>
+    <p>Receita por forma de pagamento, por assinatura VIP e por tipo de carregador.</p>
+  </section>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-section">
+      <div class="stat-grid">
+        <div class="stat-box highlight">
+          <div class="stat-label">Receita de recargas</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_total) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Receita VIP (mensal)</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_vip_mensal) }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Assinantes VIP ativos</div>
+          <div class="stat-value">{{ usuarios_vip_ativos }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Receita total combinada</div>
+          <div class="stat-value">R$ {{ '%.2f'|format(receita_total + receita_vip_mensal) }}</div>
+        </div>
+      </div>
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Receita por forma de pagamento</div>
+      {% if receita_por_forma_lista %}
+        <div class="revenue-bars">
+          {% for forma, valor in receita_por_forma_lista %}
+          <div class="revenue-bar-row">
+            <span class="revenue-bar-label">{{ forma }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill" style="width: {{ (valor / receita_total * 100) if receita_total else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">R$ {{ '%.2f'|format(valor) }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="subtitle" style="margin-bottom:0;">Nenhuma sessão paga ainda.</p>
+      {% endif %}
+
+      <div class="ofertas-heading" style="margin-top: 24px;">Receita por tipo de carregador</div>
+      <p class="subtitle" style="margin-top:-14px;">Ajuda a decidir onde vale a pena instalar mais postos.</p>
+      {% if receita_por_carregador_lista %}
+        <div class="revenue-bars">
+          {% for tipo, valor in receita_por_carregador_lista %}
+          <div class="revenue-bar-row">
+            <span class="revenue-bar-label">{{ tipo }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill charger" style="width: {{ (valor / maior_receita_carregador * 100) if maior_receita_carregador else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">R$ {{ '%.2f'|format(valor) }} · {{ sessoes_por_carregador[tipo] }} sessão(ões)</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="subtitle" style="margin-bottom:0;">Nenhuma sessão paga ainda.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

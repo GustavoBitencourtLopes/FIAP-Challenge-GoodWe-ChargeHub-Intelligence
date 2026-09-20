@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cupons · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Cupons mais resgatados</h1>
+    <p>Ranking das lojas parceiras com mais cupons resgatados pelos clientes — útil para negociar com lojistas.</p>
+  </section>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-section">
+      {% if ranking_cupons %}
+        <div class="ranking-list">
+          {% for loja, contagem in ranking_cupons %}
+          <div class="ranking-item">
+            <span class="ranking-position">#{{ loop.index }}</span>
+            <span class="ranking-nome">{{ loja }}</span>
+            <div class="revenue-bar-track">
+              <div class="revenue-bar-fill charger" style="width: {{ (contagem / maior_contagem_cupom * 100) if maior_contagem_cupom else 0 }}%"></div>
+            </div>
+            <span class="revenue-bar-value">{{ contagem }} resgate(s)</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>Nenhum cupom resgatado ainda</h3>
+          <p>O ranking aparece aqui assim que clientes começarem a resgatar ofertas durante o carregamento.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

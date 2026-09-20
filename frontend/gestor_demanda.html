@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demanda · Painel do Gestor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  {% include 'partials/_navbar_gestor.html' %}
+
+  <section class="painel-header">
+    <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
+    <h1>Gestão de demanda</h1>
+    <p>Sessões de carregamento por horário do dia — barras vermelhas marcam o horário de pico (08h-10h e 18h-21h).</p>
+  </section>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-section">
+      {% if total_sessoes == 0 %}
+        <div class="empty-state">
+          <h3>Ainda não há sessões registradas</h3>
+          <p>Assim que clientes começarem a carregar, o gráfico de demanda aparece aqui.</p>
+        </div>
+      {% else %}
+        <div class="hour-chart">
+          {% for contagem in contagem_por_hora %}
+          <div class="hour-bar {{ 'pico' if loop.index0 in horas_de_pico else '' }}"
+               style="height: {{ (contagem / maximo_por_hora * 100) if maximo_por_hora else 0 }}%"
+               title="{{ loop.index0 }}h — {{ contagem }} sessão(ões)"></div>
+          {% endfor %}
+        </div>
+        <div class="hour-chart-labels">
+          <span>0h</span><span>3h</span><span>6h</span><span>9h</span><span>12h</span><span>15h</span><span>18h</span><span>21h</span>
+        </div>
+
+        <div class="stat-grid" style="margin-top: 24px;">
+          <div class="stat-box">
+            <div class="stat-label">Demanda baixa</div>
+            <div class="stat-value">{{ contagem_por_nivel.baixa }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Demanda moderada</div>
+            <div class="stat-value">{{ contagem_por_nivel.media }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Demanda alta</div>
+            <div class="stat-value">{{ contagem_por_nivel.alta }}</div>
+          </div>
+          <div class="stat-box highlight">
+            <div class="stat-label">Sessões em horário de pico</div>
+            <div class="stat-value">{{ percentual_em_pico }}%</div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include 'partials/_footer.html' %}
+  {% include 'partials/_back_to_top.html' %}
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

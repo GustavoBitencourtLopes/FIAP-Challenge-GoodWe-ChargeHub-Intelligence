@@ -18,9 +18,8 @@ Fluxo de onboarding:
 10. /login-gestor    -> tela de login separada para a conta de gestor
     (usuário "gestor", senha "123") — acessível pelo link "Login corporativo"
     na tela de login normal.
-11. /gestor/painel   -> painel do gestor do outlet (só para contas do tipo
-    "gestor"): KPIs, demanda, tarifação, faturamento, cupons, simulador e
-    um assistente de IA que já conhece os dados reais da operação.
+11. /gestor/painel   -> hub do gestor: KPIs + cards que levam para cada
+    área (demanda, tarifação, faturamento, cupons, simulador, assistente).
 
 SISTEMA INTELIGENTE (regras, sem custo de API):
 - Detecta horário de pico pelo relógio real (fuso de São Paulo).
@@ -451,9 +450,9 @@ HORAS_DE_PICO = {8, 9, 18, 19, 20}
 
 def _calcular_metricas_outlet():
     """Calcula TODAS as métricas agregadas do painel do gestor num só
-    lugar. Usado tanto para renderizar o painel quanto para alimentar o
-    assistente de IA do gestor — assim os dois sempre mostram os mesmos
-    números, sem duplicar a lógica de cálculo."""
+    lugar. Usado para renderizar cada página do gestor e para alimentar o
+    assistente de IA — assim tudo sempre mostra os mesmos números, sem
+    duplicar a lógica de cálculo em vários lugares."""
 
     todas_sessoes = SessaoCarregamento.query.all()
     sessoes_pagas = [s for s in todas_sessoes if s.pago]
@@ -553,16 +552,86 @@ def _calcular_metricas_outlet():
 @gestor_required
 def painel_gestor():
     metricas = _calcular_metricas_outlet()
-
     return render_template(
         "painel_gestor.html",
         usuario=usuario_atual(),
+        pagina_atual="gestor_painel",
+        **metricas,
+    )
+
+
+@app.route("/gestor/demanda")
+@gestor_required
+def gestor_demanda():
+    metricas = _calcular_metricas_outlet()
+    return render_template(
+        "gestor_demanda.html",
+        usuario=usuario_atual(),
         horas_de_pico=HORAS_DE_PICO,
+        pagina_atual="gestor_demanda",
+        **metricas,
+    )
+
+
+@app.route("/gestor/tarifacao")
+@gestor_required
+def gestor_tarifacao():
+    metricas = _calcular_metricas_outlet()
+    return render_template(
+        "gestor_tarifacao.html",
+        usuario=usuario_atual(),
         tarifas_por_kwh=TARIFAS_POR_KWH,
         desconto_percentual=DESCONTO_PERCENTUAL,
         taxa_pico_percentual=TAXA_PICO_PERCENTUAL,
-        pagina_atual="painel_gestor",
+        pagina_atual="gestor_tarifacao",
         **metricas,
+    )
+
+
+@app.route("/gestor/faturamento")
+@gestor_required
+def gestor_faturamento():
+    metricas = _calcular_metricas_outlet()
+    return render_template(
+        "gestor_faturamento.html",
+        usuario=usuario_atual(),
+        pagina_atual="gestor_faturamento",
+        **metricas,
+    )
+
+
+@app.route("/gestor/cupons")
+@gestor_required
+def gestor_cupons():
+    metricas = _calcular_metricas_outlet()
+    return render_template(
+        "gestor_cupons.html",
+        usuario=usuario_atual(),
+        pagina_atual="gestor_cupons",
+        **metricas,
+    )
+
+
+@app.route("/gestor/simulador")
+@gestor_required
+def gestor_simulador():
+    metricas = _calcular_metricas_outlet()
+    return render_template(
+        "gestor_simulador.html",
+        usuario=usuario_atual(),
+        taxa_pico_percentual=TAXA_PICO_PERCENTUAL,
+        pagina_atual="gestor_simulador",
+        **metricas,
+    )
+
+
+@app.route("/gestor/assistente")
+@gestor_required
+def gestor_assistente():
+    return render_template(
+        "gestor_assistente.html",
+        usuario=usuario_atual(),
+        pagina_atual="gestor_assistente",
     )
 
 
