@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tarifação · Painel do Gestor</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
   <div class="blob blob-1"></div>
@@ -16,11 +18,16 @@
   <section class="painel-header">
     <a href="/gestor/painel" class="back-link"><span class="arrow-icon">←</span> Voltar ao painel</a>
     <h1>Tarifação dinâmica</h1>
-    <p>Impacto real da taxa de horário de pico e dos descontos por baixa demanda no faturamento.</p>
+    <p>Impacto real da taxa de pico e dos descontos no faturamento - e uma ferramenta para ajustar tudo isso de verdade.
+    </p>
   </section>
 
   <div class="dashboard-wrapper">
+
     <div class="dashboard-section">
+      <h2>Como a tarifação ja impactou o faturamento</h2>
+      <p class="subtitle">Com base em todas as sessões pagas já registradas.</p>
+
       <div class="stat-grid">
         <div class="stat-box highlight">
           <div class="stat-label">Receita extra em horário de pico</div>
@@ -35,8 +42,8 @@
           <div class="stat-value">{{ sessoes_pagas_com_desconto }}</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Taxa de pico atual</div>
-          <div class="stat-value">+{{ (taxa_pico_percentual * 100)|round|int }}%</div>
+          <div class="stat-label">Taxa de pico em vigor agora</div>
+          <div class="stat-value" id="taxa-em-vigor">{{ (taxa_pico_percentual * 100)|round|int }}%</div>
         </div>
       </div>
 
@@ -44,32 +51,101 @@
       <table class="tarifa-table">
         <thead>
           <tr>
-            <th>Nível de demanda</th>
+            <th>Nivel de demanda</th>
             <th>Tarifa base</th>
-            <th>Desconto aplicado</th>
+            <th>Desconto em vigor</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Baixa</td>
             <td>R$ {{ '%.2f'|format(tarifas_por_kwh.baixa) }}/kWh</td>
-            <td>{{ (desconto_percentual.baixa * 100)|round|int }}%</td>
+            <td id="tabela-desconto-baixa">{{ (desconto_percentual.baixa * 100)|round|int }}%</td>
           </tr>
           <tr>
             <td>Moderada</td>
             <td>R$ {{ '%.2f'|format(tarifas_por_kwh.media) }}/kWh</td>
-            <td>—</td>
+            <td id="tabela-desconto-media">{{ (desconto_percentual.media * 100)|round|int }}%</td>
           </tr>
           <tr>
             <td>Alta</td>
             <td>R$ {{ '%.2f'|format(tarifas_por_kwh.alta) }}/kWh</td>
-            <td>—</td>
+            <td id="tabela-desconto-alta">{{ (desconto_percentual.alta * 100)|round|int }}%</td>
           </tr>
         </tbody>
       </table>
-      <p class="subtitle" style="margin-top: 12px; margin-bottom: 0;">
-        Em horário de pico (08h-10h, 18h-21h), soma-se uma taxa extra de +{{ (taxa_pico_percentual * 100)|round|int }}% sobre a tarifa base.
+    </div>
+
+    <div class="dashboard-section">
+      <h2>Ajustar tarifação e descontos</h2>
+      <p class="subtitle">
+        Arraste os controles abaixo. Ao clicar em "Salvar configurações", tudo passa a valer
+        de verdade para as próximas sessões de carregamento dos clientes.
       </p>
+
+      {% if receita_base_pico_sem_taxa > 0 %}
+      <div class="ofertas-heading">Projeção da taxa de pico</div>
+      <p class="subtitle" style="margin-top:-10px;">Com base no histórico de sessões pagas em horário de pico.</p>
+      {% endif %}
+
+      <div class="simulador-box">
+        <label for="slider-taxa-pico">
+          Taxa de horário de pico: <strong id="valor-taxa-pico">{{ (taxa_pico_percentual * 100)|round|int }}%</strong>
+        </label>
+        <input type="range" id="slider-taxa-pico" min="0" max="50" step="1"
+          value="{{ (taxa_pico_percentual * 100)|round|int }}" class="slider-tarifa">
+
+        {% if receita_base_pico_sem_taxa > 0 %}
+        <div class="stat-grid" style="margin-top: 20px;">
+          <div class="stat-box">
+            <div class="stat-label">Receita extra atual (historico)</div>
+            <div class="stat-value">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+          </div>
+          <div class="stat-box highlight">
+            <div class="stat-label">Receita extra projetada</div>
+            <div class="stat-value" id="valor-receita-projetada">R$ {{ '%.2f'|format(receita_extra_pico) }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Diferença projetada</div>
+            <div class="stat-value" id="valor-diferenca">R$ 0,00</div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="ofertas-heading" style="margin-top: 28px;">Descontos por nivel de demanda</div>
+      <p class="subtitle" style="margin-top:-10px;">Incentive o uso do outlet em horários de baixa ou moderada demanda
+        oferecendo desconto também nesses momentos.</p>
+
+      <div class="simulador-box">
+        <label for="slider-desconto-baixa">
+          Desconto em baixa demanda: <strong id="valor-desconto-baixa">{{ (desconto_percentual.baixa * 100)|round|int
+            }}%</strong>
+        </label>
+        <input type="range" id="slider-desconto-baixa" min="0" max="100" step="1"
+          value="{{ (desconto_percentual.baixa * 100)|round|int }}" class="slider-tarifa">
+      </div>
+
+      <div class="simulador-box" style="margin-top: 14px;">
+        <label for="slider-desconto-media">
+          Desconto em demanda moderada: <strong id="valor-desconto-media">{{ (desconto_percentual.media * 100)|round|int
+            }}%</strong>
+        </label>
+        <input type="range" id="slider-desconto-media" min="0" max="100" step="1"
+          value="{{ (desconto_percentual.media * 100)|round|int }}" class="slider-tarifa">
+      </div>
+
+      <div class="simulador-box" style="margin-top: 14px;">
+        <label for="slider-desconto-alta">
+          Desconto em alta demanda: <strong id="valor-desconto-alta">{{ (desconto_percentual.alta * 100)|round|int
+            }}%</strong>
+        </label>
+        <input type="range" id="slider-desconto-alta" min="0" max="100" step="1"
+          value="{{ (desconto_percentual.alta * 100)|round|int }}" class="slider-tarifa">
+      </div>
+
+      <button class="btn btn-gold btn-full" id="btn-salvar-taxa" style="margin-top: 24px;">Salvar configurações</button>
+      <div id="mensagem-taxa" class="msg"></div>
     </div>
   </div>
 
@@ -77,5 +153,98 @@
   {% include 'partials/_back_to_top.html' %}
 
   <script src="/static/js/main.js"></script>
+  <script>
+    var receitaBase = {{ receita_base_pico_sem_taxa }};
+    var receitaAtual = {{ receita_extra_pico }};
+
+    var sliderTaxa = document.getElementById('slider-taxa-pico');
+    var valorTaxa = document.getElementById('valor-taxa-pico');
+    var valorProjetada = document.getElementById('valor-receita-projetada');
+    var valorDiferenca = document.getElementById('valor-diferenca');
+    var taxaEmVigor = document.getElementById('taxa-em-vigor');
+
+    var sliderDescontoBaixa = document.getElementById('slider-desconto-baixa');
+    var sliderDescontoMedia = document.getElementById('slider-desconto-media');
+    var sliderDescontoAlta = document.getElementById('slider-desconto-alta');
+    var valorDescontoBaixa = document.getElementById('valor-desconto-baixa');
+    var valorDescontoMedia = document.getElementById('valor-desconto-media');
+    var valorDescontoAlta = document.getElementById('valor-desconto-alta');
+    var tabelaDescontoBaixa = document.getElementById('tabela-desconto-baixa');
+    var tabelaDescontoMedia = document.getElementById('tabela-desconto-media');
+    var tabelaDescontoAlta = document.getElementById('tabela-desconto-alta');
+
+    var btnSalvar = document.getElementById('btn-salvar-taxa');
+    var mensagemTaxa = document.getElementById('mensagem-taxa');
+
+    sliderTaxa.addEventListener('input', function () {
+      var percentual = parseFloat(sliderTaxa.value);
+      valorTaxa.textContent = percentual + '%';
+
+      if (valorProjetada) {
+        var receitaProjetada = receitaBase * (percentual / 100);
+        valorProjetada.textContent = 'R$ ' + receitaProjetada.toFixed(2);
+
+        var diferenca = receitaProjetada - receitaAtual;
+        var sinal = diferenca >= 0 ? '+ R$ ' : '- R$ ';
+        valorDiferenca.textContent = sinal + Math.abs(diferenca).toFixed(2);
+      }
+    });
+
+    sliderDescontoBaixa.addEventListener('input', function () {
+      valorDescontoBaixa.textContent = sliderDescontoBaixa.value + '%';
+    });
+    sliderDescontoMedia.addEventListener('input', function () {
+      valorDescontoMedia.textContent = sliderDescontoMedia.value + '%';
+    });
+    sliderDescontoAlta.addEventListener('input', function () {
+      valorDescontoAlta.textContent = sliderDescontoAlta.value + '%';
+    });
+
+    btnSalvar.addEventListener('click', function () {
+      mensagemTaxa.className = 'msg';
+      btnSalvar.disabled = true;
+      btnSalvar.textContent = 'Salvando...';
+
+      var payload = {};
+      payload.taxa_pico_percentual = parseFloat(sliderTaxa.value);
+      payload.desconto_baixa = parseFloat(sliderDescontoBaixa.value);
+      payload.desconto_media = parseFloat(sliderDescontoMedia.value);
+      payload.desconto_alta = parseFloat(sliderDescontoAlta.value);
+
+      fetch('/api/gestor/tarifacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(function (resposta) {
+          return resposta.json().then(function (resultado) {
+            return { ok: resposta.ok, resultado: resultado };
+          });
+        })
+        .then(function (obj) {
+          if (!obj.ok) {
+            mensagemTaxa.textContent = obj.resultado.erro || 'Nao foi possivel salvar.';
+            mensagemTaxa.className = 'msg erro';
+            return;
+          }
+          mensagemTaxa.textContent = obj.resultado.mensagem;
+          mensagemTaxa.className = 'msg sucesso';
+
+          taxaEmVigor.textContent = payload.taxa_pico_percentual + '%';
+          tabelaDescontoBaixa.textContent = payload.desconto_baixa + '%';
+          tabelaDescontoMedia.textContent = payload.desconto_media + '%';
+          tabelaDescontoAlta.textContent = payload.desconto_alta + '%';
+        })
+        .catch(function () {
+          mensagemTaxa.textContent = 'Erro de conexao com o servidor.';
+          mensagemTaxa.className = 'msg erro';
+        })
+        .finally(function () {
+          btnSalvar.disabled = false;
+          btnSalvar.textContent = 'Salvar configuracoes';
+        });
+    });
+  </script>
 </body>
+
 </html>

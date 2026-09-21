@@ -19,7 +19,15 @@ Fluxo de onboarding:
     (usuário "gestor", senha "123") — acessível pelo link "Login corporativo"
     na tela de login normal.
 11. /gestor/painel   -> hub do gestor: KPIs + cards que levam para cada
-    área (demanda, tarifação, faturamento, cupons, simulador, assistente).
+    área (demanda, tarifação + simulador, faturamento, cupons, assistente).
+
+TARIFAÇÃO E DESCONTOS CONFIGURÁVEIS:
+A taxa de horário de pico E os 3 níveis de desconto (baixa/moderada/alta
+demanda) NÃO são mais constantes fixas no código — moram na tabela
+`Configuracao`, no banco. O gestor pode alterar tudo isso na tela de
+Tarifação, e a mudança passa a valer IMEDIATAMENTE para novas sessões de
+carregamento do cliente. Sessões já registradas mantêm o valor que estava
+em vigor no momento em que foram criadas (não reescrevemos o histórico).
 
 SISTEMA INTELIGENTE (regras, sem custo de API):
 - Detecta horário de pico pelo relógio real (fuso de São Paulo).
@@ -196,6 +204,19 @@ class CupomResgatado(db.Model):
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class Configuracao(db.Model):
+    """Configurações do sistema que o GESTOR pode alterar em tempo real,
+    afetando imediatamente o que o cliente vê/paga: a taxa de horário de
+    pico e os 3 níveis de desconto (baixa/moderada/alta demanda)."""
+    __tablename__ = "configuracao"
+
+    id = db.Column(db.Integer, primary_key=True)
+    taxa_pico_percentual = db.Column(db.Float, default=0.15)
+    desconto_baixa_percentual = db.Column(db.Float, default=0.10)
+    desconto_media_percentual = db.Column(db.Float, default=0.0)
+    desconto_alta_percentual = db.Column(db.Float, default=0.0)
+
+
 with app.app_context():
     db.create_all()
 
@@ -208,6 +229,17 @@ with app.app_context():
         db.session.add(gestor_demo)
         db.session.commit()
         print("Conta de gestor de demonstração criada: usuário 'gestor' / senha '123'")
+
+    # Garante que sempre existe uma linha de configuração (valores padrão:
+    # taxa de pico 15%, desconto de 10% só em baixa demanda).
+    if Configuracao.query.first() is None:
+        db.session.add(Configuracao(
+            taxa_pico_percentual=0.15,
+            desconto_baixa_percentual=0.10,
+            desconto_media_percentual=0.0,
+            desconto_alta_percentual=0.0,
+        ))
+        db.session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +311,34 @@ def _hora_sao_paulo(dt_utc):
         return dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/Sao_Paulo")).hour
     except ZoneInfoNotFoundError:
         return dt_utc.hour
+
+
+def _obter_configuracao():
+    """Retorna a linha de configuração do banco (cria uma com valores
+    padrão se, por algum motivo, ela não existir)."""
+    config = Configuracao.query.first()
+    if config is None:
+        config = Configuracao()
+        db.session.add(config)
+        db.session.commit()
+    return config
+
+
+def _obter_taxa_pico_percentual():
+    return _obter_configuracao().taxa_pico_percentual
+
+
+def _obter_desconto_percentual():
+    """Retorna os 3 níveis de desconto ATUAIS do banco, no mesmo formato
+    de dicionário que o resto do código já espera ({"baixa":..., "media":...,
+    "alta":...}) — assim o cálculo de preço não precisa saber que isso
+    agora vem do banco em vez de ser fixo."""
+    config = _obter_configuracao()
+    return {
+        "baixa": config.desconto_baixa_percentual,
+        "media": config.desconto_media_percentual,
+        "alta": config.desconto_alta_percentual,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -581,11 +641,18 @@ def gestor_tarifacao():
         "gestor_tarifacao.html",
         usuario=usuario_atual(),
         tarifas_por_kwh=TARIFAS_POR_KWH,
-        desconto_percentual=DESCONTO_PERCENTUAL,
-        taxa_pico_percentual=TAXA_PICO_PERCENTUAL,
+        desconto_percentual=_obter_desconto_percentual(),
+        taxa_pico_percentual=_obter_taxa_pico_percentual(),
         pagina_atual="gestor_tarifacao",
         **metricas,
     )
+
+
+@app.route("/gestor/simulador")
+@gestor_required
+def gestor_simulador_redirect():
+    # A página do simulador foi unificada com a de Tarifação.
+    return redirect(url_for("gestor_tarifacao"))
 
 
 @app.route("/gestor/faturamento")
@@ -612,19 +679,6 @@ def gestor_cupons():
     )
 
 
-@app.route("/gestor/simulador")
-@gestor_required
-def gestor_simulador():
-    metricas = _calcular_metricas_outlet()
-    return render_template(
-        "gestor_simulador.html",
-        usuario=usuario_atual(),
-        taxa_pico_percentual=TAXA_PICO_PERCENTUAL,
-        pagina_atual="gestor_simulador",
-        **metricas,
-    )
-
-
 @app.route("/gestor/assistente")
 @gestor_required
 def gestor_assistente():
@@ -633,6 +687,41 @@ def gestor_assistente():
         usuario=usuario_atual(),
         pagina_atual="gestor_assistente",
     )
+
+
+@app.route("/api/gestor/tarifacao", methods=["POST"])
+@gestor_required
+def api_gestor_atualizar_tarifacao():
+    """Permite ao gestor mudar, de uma vez, a taxa de horário de pico e os
+    3 níveis de desconto — a mudança passa a valer para as PRÓXIMAS
+    sessões de carregamento do cliente, a partir de agora."""
+    dados = request.get_json(silent=True) or {}
+
+    taxa_pico = _numero_ou_none(dados.get("taxa_pico_percentual"))
+    desconto_baixa = _numero_ou_none(dados.get("desconto_baixa"))
+    desconto_media = _numero_ou_none(dados.get("desconto_media"))
+    desconto_alta = _numero_ou_none(dados.get("desconto_alta"))
+
+    campos = [
+        ("taxa de horário de pico", taxa_pico, 50),
+        ("desconto de baixa demanda", desconto_baixa, 100),
+        ("desconto de demanda moderada", desconto_media, 100),
+        ("desconto de alta demanda", desconto_alta, 100),
+    ]
+    for nome, valor, maximo in campos:
+        if valor is None or not (0 <= valor <= maximo):
+            return jsonify({"erro": f"Informe um valor válido (0 a {maximo}) para {nome}."}), 400
+
+    config = _obter_configuracao()
+    config.taxa_pico_percentual = taxa_pico / 100
+    config.desconto_baixa_percentual = desconto_baixa / 100
+    config.desconto_media_percentual = desconto_media / 100
+    config.desconto_alta_percentual = desconto_alta / 100
+    db.session.commit()
+
+    return jsonify({
+        "mensagem": "Configurações de tarifação atualizadas! Já valem para as próximas sessões.",
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -748,8 +837,6 @@ HORARIOS_PICO = [(8, 10), (18, 21)]
 
 TARIFAS_POR_KWH = {"baixa": 0.79, "media": 0.99, "alta": 1.29}
 ESPERA_MINUTOS = {"baixa": 0, "media": 8, "alta": 18}
-DESCONTO_PERCENTUAL = {"baixa": 0.10, "media": 0.0, "alta": 0.0}
-TAXA_PICO_PERCENTUAL = 0.15
 
 LOTACAO_LABEL = {"baixa": "Tranquilo", "media": "Moderado", "alta": "Lotado"}
 
@@ -941,11 +1028,14 @@ def api_carregamento_simular():
     tempo_total_min = tempo_carregamento_min + tempo_espera_min
 
     tarifa_base = TARIFAS_POR_KWH[nivel]
-    taxa_pico_kwh = tarifa_base * TAXA_PICO_PERCENTUAL if pico else 0.0
+    taxa_pico_percentual_atual = _obter_taxa_pico_percentual()
+    desconto_percentual_atual = _obter_desconto_percentual()
+
+    taxa_pico_kwh = tarifa_base * taxa_pico_percentual_atual if pico else 0.0
     tarifa_final_kwh = tarifa_base + taxa_pico_kwh
 
     valor_total = energia_kwh * tarifa_final_kwh
-    desconto = valor_total * DESCONTO_PERCENTUAL[nivel]
+    desconto = valor_total * desconto_percentual_atual[nivel]
     valor_final = valor_total - desconto
 
     sessao = SessaoCarregamento(
@@ -1189,7 +1279,7 @@ def api_chat():
 # API - ASSISTENTE DO GESTOR (Google Gemini + dados agregados reais)
 # ---------------------------------------------------------------------------
 
-def _montar_system_prompt_gestor(usuario, m):
+def _montar_system_prompt_gestor(usuario, m, taxa_pico_percentual_atual, desconto_percentual_atual):
     resumo_forma = "\n".join(
         f"- {forma}: R$ {valor:.2f}" for forma, valor in m["receita_por_forma_lista"]
     ) or "Nenhuma sessão paga ainda."
@@ -1218,7 +1308,9 @@ DADOS REAIS DA OPERAÇÃO ATÉ AGORA:
 - Receita VIP mensal (assinantes ativos: {m['usuarios_vip_ativos']}): R$ {m['receita_vip_mensal']:.2f}
 - Horário mais movimentado: {hora_pico_texto}
 - % das sessões em horário de pico: {m['percentual_em_pico']}%
-- Receita extra gerada pela taxa de pico: R$ {m['receita_extra_pico']:.2f}
+- Taxa de pico configurada atualmente: {round(taxa_pico_percentual_atual * 100)}%
+- Descontos configurados atualmente: baixa demanda {round(desconto_percentual_atual['baixa'] * 100)}%, demanda moderada {round(desconto_percentual_atual['media'] * 100)}%, alta demanda {round(desconto_percentual_atual['alta'] * 100)}%
+- Receita extra já gerada pela taxa de pico: R$ {m['receita_extra_pico']:.2f}
 - Desconto total concedido em baixa demanda: R$ {m['total_desconto_concedido']:.2f}
 - Taxa de resgate de cupons: {m['taxa_resgate']}%
 
@@ -1233,9 +1325,9 @@ CUPONS MAIS RESGATADOS (top 5):
 
 SEU PAPEL:
 1. Responder perguntas do gestor sobre esses dados, com clareza e números concretos.
-2. Sugerir ações de negócio baseadas nesses números (ex: ajustar a taxa de pico, negociar
-   com uma loja específica, considerar mais um carregador de determinado tipo) — sempre
-   citando o dado real que embasa a sugestão.
+2. Sugerir ações de negócio baseadas nesses números (ex: ajustar a taxa de pico ou os
+   descontos, negociar com uma loja específica, considerar mais um carregador de
+   determinado tipo) — sempre citando o dado real que embasa a sugestão.
 3. Nunca inventar números que não estejam listados acima. Se não houver dado suficiente
    para responder algo, diga isso claramente.
 4. Ser direto e objetivo — no máximo 4-5 frases, usando "-" para listas e "**texto**"
@@ -1260,7 +1352,9 @@ def api_chat_gestor():
 
     usuario = usuario_atual()
     metricas = _calcular_metricas_outlet()
-    system_prompt = _montar_system_prompt_gestor(usuario, metricas)
+    system_prompt = _montar_system_prompt_gestor(
+        usuario, metricas, _obter_taxa_pico_percentual(), _obter_desconto_percentual()
+    )
 
     historico_convertido = []
     for msg in mensagens[-12:]:
